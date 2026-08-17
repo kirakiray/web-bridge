@@ -140,5 +140,5 @@ eval 执行约定（client.js）：先按表达式包装 `async () => ( code )`�
 
 ## 开发
 
-- 测试：`npm test`（Node e2e：起进程 + 模拟页面 + stdio/HTTP 双传输调工具），真实浏览器链路用 [test/test-page.html](test/test-page.html) 手动验证。
-- 依赖：`ws`（WebSocket）、`@modelcontextprotocol/sdk`（MCP）、`zod`（参数校验）。Node ≥ 18。
+- 测试：`npm test`（Node e2e：起进程 + 模拟页面 + stdio/HTTP 双传输调工具）；`npm run test:browser`（Playwright 真实浏览器链路：Chromium 加载 [test/test-page.html](test/test-page.html)，经真实 WebSocket 验证 6 个工具，首次前执行 `npx playwright install chromium`）。真实浏览器链路也可打开测试页手动验证。
+- 依赖：`ws`（WebSocket）、`@modelcontextprotocol/sdk`（MCP）、`zod`（参数校验）；开发依赖 `@playwright/test`。Node ≥ 18。

@@ -18,7 +18,8 @@
   ],
   "scripts": {
     "start": "node server.js",
-    "test": "node test/run-tests.mjs"
+    "test": "node test/run-tests.mjs",
+    "test:browser": "playwright test"
   },
   "engines": {
     "node": ">=18"
@@ -27,5 +28,8 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "ws": "^8.18.0",
     "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
   }
 }

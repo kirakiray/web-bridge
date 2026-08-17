@@ -146,3 +146,8 @@ vite.config.ts.timestamp-*
 # ZCode 会话目录
 .zcode/
 .playwright-mcp/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

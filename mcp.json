@@ -1,0 +1,22 @@
+{
+  "_comment": "web-bridge MCP 配置模板（二选一）。本地 stdio：把 <REPO>/server.js 替换为本仓库绝对路径；远程 http：服务器上先运行 node server.js --transport http --host 0.0.0.0 --token <secret>，再把 url 与令牌填入 _remote_example 的形式。详见 README.md。",
+  "mcpServers": {
+    "web-bridge": {
+      "command": "node",
+      "args": ["<REPO>/server.js"],
+      "env": {
+        "PORT": "3210",
+        "HOST": "127.0.0.1"
+      }
+    }
+  },
+  "_remote_example": {
+    "mcpServers": {
+      "web-bridge": {
+        "type": "http",
+        "url": "https://your-domain.com/mcp",
+        "headers": { "Authorization": "Bearer <secret>" }
+      }
+    }
+  }
+}

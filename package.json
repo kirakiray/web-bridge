@@ -1,13 +1,22 @@
 {
-  "name": "web-bridge",
-  "version": "0.1.0",
+  "name": "web-bridge-mcp",
+  "version": "1.0.0",
   "description": "MCP Server：AI 编辑器经 stdio 调用工具，间接在引入 client.js 的静态网页上 eval JS / 读取控制台 / 模拟操作",
   "type": "module",
   "main": "server.js",
+  "bin": {
+    "web-bridge-mcp": "./server.js"
+  },
+  "files": [
+    "server.js",
+    "client.js",
+    "lib/",
+    "mcp.json"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kirakiray/web-bridge.git"
+    "url": "git+https://github.com/kirakiray/web-bridge-mcp.git"
   },
   "keywords": [
     "mcp",
@@ -18,6 +27,8 @@
   ],
   "scripts": {
     "start": "node server.js",
+    "serve": "node server.js --transport http",
+    "serve:groups": "node server.js --transport http --admin \"${ADMIN_PASSWORD:-123456}\"",
     "test": "node test/run-tests.mjs",
     "test:browser": "playwright test"
   },

@@ -1,4 +1,4 @@
-// run-tests.mjs — web-bridge e2e 测试
+// run-tests.mjs — web-bridge-mcp e2e 测试
 // 覆盖：client.js 注入下发、页面注册、list_pages、eval_js（表达式/语句/async/错误/超时）、
 //       get_console、click/type/get_text 预设、多页 pageId 选择、令牌模式、进程随 stdin 关闭退出、
 //       分组模式（--admin 管理后台：登录/建组/专属入口/分组隔离/调用记录/删除）
@@ -86,7 +86,7 @@ class McpClient {
     const res = await this.request("initialize", {
       protocolVersion: "2025-06-18",
       capabilities: {},
-      clientInfo: { name: "web-bridge-test", version: "0.0.0" },
+      clientInfo: { name: "web-bridge-mcp-test", version: "0.0.0" },
     });
     this.notify("notifications/initialized");
     return res;
@@ -152,7 +152,7 @@ function installDomShim() {
 }
 
 async function main() {
-  console.log("web-bridge e2e 测试\n");
+  console.log("web-bridge-mcp e2e 测试\n");
 
   // ---------- 实例 1：默认模式 ----------
   const port = await freePort();
@@ -168,7 +168,7 @@ async function main() {
 
   console.log("— MCP 握手 —");
   const init = await mcp.initialize();
-  check("initialize 返回 serverInfo", init.result?.serverInfo?.name === "web-bridge");
+  check("initialize 返回 serverInfo", init.result?.serverInfo?.name === "web-bridge-mcp");
 
   console.log("— 页面注册与工具往返 —");
   const page = new FakePage(port, "page-aaaa-1111");
@@ -276,7 +276,7 @@ async function main() {
       });
 
     const init3 = await httpCall({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "0" } } });
-    check("HTTP initialize", init3.status === 200 && (await init3.json()).result?.serverInfo?.name === "web-bridge");
+    check("HTTP initialize", init3.status === 200 && (await init3.json()).result?.serverInfo?.name === "web-bridge-mcp");
 
     const eval3 = await httpCall({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "eval_js", arguments: { code: "6 * 7" } } });
     const eval3json = await eval3.json();
@@ -309,8 +309,8 @@ async function main() {
     check("HTTP 无令牌调用被拒（401）", noAuth.status === 401, `status=${noAuth.status}`);
     const bearer = await post({ Authorization: "Bearer tok-http" });
     check("HTTP Bearer 令牌通过", bearer.status === 200);
-    const custom = await post({ "X-Web-Bridge-Token": "tok-http" });
-    check("HTTP X-Web-Bridge-Token 令牌通过", custom.status === 200);
+    const custom = await post({ "X-Web-Bridge-MCP-Token": "tok-http" });
+    check("HTTP X-Web-Bridge-MCP-Token 令牌通过", custom.status === 200);
     const wrong = await post({ Authorization: "Bearer wrong" });
     check("HTTP 错误令牌被拒（401）", wrong.status === 401, `status=${wrong.status}`);
   } finally {

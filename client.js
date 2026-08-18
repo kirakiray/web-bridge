@@ -1,4 +1,4 @@
-/* web-bridge client.js — 在任意静态网页中引入，连接 web-bridge MCP Server
+/* web-bridge-mcp client.js — 在任意静态网页中引入，连接 web-bridge-mcp MCP Server
  * 用法：<script src="http://127.0.0.1:3210/client.js"></script>
  * （由 server 端下发时会在文件头注入 window.__WEB_BRIDGE__ 配置）
  * 零依赖；自动重连；捕获 console 与未捕获异常；执行 eval 请求并回传序列化结果

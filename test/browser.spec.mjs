@@ -1,6 +1,7 @@
 // browser.spec.mjs — Playwright 真实浏览器链路测试
 // 与 run-tests.mjs（Node 模拟页面）互补：这里用真实 Chromium 加载 test-page.html，
 // 经真实 WebSocket 连到 web-bridge，再通过 MCP HTTP 接口调用 6 个工具做端到端验证。
+// 最后一个用例覆盖分组模式：登录管理后台 → 建分组 → 复制专属配置 → 页面接入 → 人与 AI 共同观察。
 // 运行：npm run test:browser（首次前执行 npx playwright install chromium）
 
 import { test, expect } from "@playwright/test";
@@ -8,12 +9,15 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const PORT = Number(process.env.WB_TEST_PORT) || 3399;
+const GPORT = Number(process.env.WB_TEST_GPORT) || 3398;
+const ADMIN_PW = "admin-test-pw";
 const BASE = `http://127.0.0.1:${PORT}`;
+const ADMIN_BASE = `http://127.0.0.1:${GPORT}`;
 const TEST_PAGE_URL = "file://" + path.join(path.dirname(fileURLToPath(import.meta.url)), "test-page.html");
 
 /** MCP Streamable HTTP（stateless）工具调用，语义与 run-tests.mjs 的 McpClient.callTool 一致 */
-async function callTool(name, args = {}) {
-  const res = await fetch(`${BASE}/mcp`, {
+async function callTool(name, args = {}, base = BASE) {
+  const res = await fetch(`${base}/mcp`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
@@ -136,5 +140,54 @@ test.describe.serial("web-bridge 真实浏览器链路", () => {
     }).toBe(false);
     const ra = await callTool("eval_js", { code: "document.title" });
     expect(ra.text).toContain("web-bridge 测试页");
+  });
+
+  test("管理后台：创建分组并接入专属页面（AI 与人共同观察）", async ({ browser }) => {
+    const gname = `E2E分组-${Date.now() % 100000}`;
+
+    // 1. 登录管理后台
+    const ctx = await browser.newContext();
+    openContexts.push(ctx);
+    const page = await ctx.newPage();
+    await page.goto(`${ADMIN_BASE}/admin`);
+    await page.fill("#pw", ADMIN_PW);
+    await page.click("#login-btn");
+    await expect(page.locator("#app-view")).toBeVisible();
+
+    // 2. 创建分组并打开详情
+    await page.fill("#group-name", gname);
+    await page.click("#create-btn");
+    const row = page.locator("#groups-table tbody tr", { hasText: gname });
+    await expect(row).toBeVisible();
+    await row.locator(".detail-btn").click();
+    await expect(page.locator("#detail")).toBeVisible();
+
+    // 3. 两段专属配置就绪（MCP JSON + 联动脚本，从脚本里取出分组 token）
+    await expect(page.locator("#mcp-snippet")).toContainText("/g/");
+    await expect(page.locator("#mcp-snippet")).toContainText("/mcp");
+    const scriptText = await page.locator("#script-snippet").textContent();
+    const token = scriptText.match(/\/g\/(wbg_[0-9a-f]+)\/client\.js/)?.[1];
+    expect(token).toBeTruthy();
+
+    // 4. 用该分组的专属脚本接入一个真实页面
+    const pctx = await browser.newContext();
+    openContexts.push(pctx);
+    const p2 = await pctx.newPage();
+    await p2.setContent(`<!doctype html><title>${gname}页面</title><h1>分组接入</h1>`);
+    await p2.addScriptTag({ url: `${ADMIN_BASE}/g/${token}/client.js` });
+
+    // 5. AI 视角：经该分组的 MCP 可见并可操控该页面（base 传分组根路径，callTool 会拼 /mcp）
+    const gbase = `${ADMIN_BASE}/g/${token}`;
+    await expect.poll(async () => (await callTool("list_pages", {}, gbase)).text).toContain(`${gname}页面`);
+    const r = await callTool("eval_js", { code: "document.title" }, gbase);
+    expect(r.text).toContain(`${gname}页面`);
+
+    // 6. 人类视角：后台的在线页面表与 AI 调用记录同步出现
+    await expect(page.locator("#pages-table")).toContainText(`${gname}页面`);
+    await expect(page.locator("#evals-table")).toContainText("eval_js");
+
+    // 7. 清理本次创建的分组（复用浏览器里的登录会话）
+    const gid = await row.locator(".detail-btn").getAttribute("data-id");
+    await page.evaluate((id) => fetch(`/admin/api/groups/${id}`, { method: "DELETE" }), gid);
   });
 });

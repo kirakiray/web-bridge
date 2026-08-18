@@ -147,6 +147,9 @@ vite.config.ts.timestamp-*
 .zcode/
 .playwright-mcp/
 
+# web-bridge 分组模式数据（含分组 token）
+data/
+
 # Playwright
 test-results/
 playwright-report/

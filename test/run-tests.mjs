@@ -1,10 +1,13 @@
 // run-tests.mjs — web-bridge e2e 测试
 // 覆盖：client.js 注入下发、页面注册、list_pages、eval_js（表达式/语句/async/错误/超时）、
-//       get_console、click/type/get_text 预设、多页 pageId 选择、令牌模式、进程随 stdin 关闭退出
+//       get_console、click/type/get_text 预设、多页 pageId 选择、令牌模式、进程随 stdin 关闭退出、
+//       分组模式（--admin 管理后台：登录/建组/专属入口/分组隔离/调用记录/删除）
 // 运行：node test/run-tests.mjs（或 npm test）
 
 import { spawn } from "node:child_process";
 import net from "node:net";
+import os from "node:os";
+import { readFile as fsReadFile, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import WebSocket from "ws";
@@ -97,13 +100,14 @@ class McpClient {
 
 /** 模拟浏览器页面：实现 hello 与迷你版 eval 执行器（与 client.js 同构的表达式/语句回退 + await） */
 class FakePage {
-  constructor(port, pageId, { url = "http://test.local/page.html", title = "测试页", token = "" } = {}) {
+  constructor(port, pageId, { url = "http://test.local/page.html", title = "测试页", token = "", wsPath = "" } = {}) {
     this.pageId = pageId;
     this.welcome = new Promise((resolve, reject) => {
       this._resolveWelcome = resolve;
       setTimeout(() => reject(new Error("未收到 welcome")), 5000);
     });
-    this.ws = new WebSocket(`ws://127.0.0.1:${port}`);
+    this.welcome.catch(() => {}); // 未被 await 时（如超时竞赛）避免 unhandledRejection
+    this.ws = new WebSocket(`ws://127.0.0.1:${port}${wsPath}`);
     this.ws.on("open", () => {
       this.ws.send(JSON.stringify({ type: "hello", role: "page", pageId, url, title, ua: "fake-page", token }));
     });
@@ -311,6 +315,86 @@ async function main() {
     check("HTTP 错误令牌被拒（401）", wrong.status === 401, `status=${wrong.status}`);
   } finally {
     child4.kill("SIGKILL");
+  }
+
+  // ---------- 实例 5：分组模式（--admin 管理后台 + 多分组隔离） ----------
+  console.log("— 分组模式（--admin） —");
+  const port5 = await freePort();
+  const dataFile5 = path.join(os.tmpdir(), `wb-groups-test-${port5}.json`);
+  const child5 = spawn(process.execPath, [SERVER, "--transport", "http", "--admin", "admin-pw", "--data", dataFile5, "--port", String(port5)], { stdio: ["pipe", "pipe", "pipe"] });
+  child5.stderr.on("data", (d) => process.env.WB_DEBUG && console.error("[server5]", d.toString().trim()));
+  try {
+    await waitForHttp(`http://127.0.0.1:${port5}/`);
+
+    const api = (p, opt = {}) => fetch(`http://127.0.0.1:${port5}${p}`, opt);
+    check("未登录访问管理 API 被拒（401）", (await api("/admin/api/groups")).status === 401);
+    check("错误密码登录被拒（401）", (await api("/admin/api/login", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: "wrong" }),
+    })).status === 401);
+
+    const loginRes = await api("/admin/api/login", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: "admin-pw" }),
+    });
+    const cookie5 = (loginRes.headers.getSetCookie()[0] || "").split(";")[0];
+    check("正确密码登录成功并下发会话 cookie", loginRes.status === 200 && cookie5.startsWith("wb_session="));
+
+    const auth = { "Content-Type": "application/json", Cookie: cookie5 };
+    const mkGroup = async (name) => {
+      const r = await api("/admin/api/groups", { method: "POST", headers: auth, body: JSON.stringify({ name }) });
+      return (await r.json()).group;
+    };
+    const gA = await mkGroup("组A");
+    const gB = await mkGroup("组B");
+    check("创建分组并返回 wbg_ 前缀专属 token", gA?.token?.startsWith("wbg_") && gB?.token?.startsWith("wbg_"));
+
+    const jsRes = await api(`/g/${gA.token}/client.js`);
+    const jsSrc = await jsRes.text();
+    check("分组专属 client.js 注入分组 ws 地址", jsRes.status === 200 && jsSrc.includes(`wsUrl: "ws://127.0.0.1:${port5}/g/${gA.token}/ws"`), jsSrc.slice(0, 80));
+    check("未知 token 的分组入口 404", (await api("/g/wbg_notexist/client.js")).status === 404);
+
+    const gp = new FakePage(port5, "page-group-1111", { url: "http://test.local/group.html", title: "分组页", wsPath: `/g/${gA.token}/ws` });
+    check("页面经分组专属 ws 注册成功", (await Promise.race([gp.welcome, sleep(3000).then(() => null)])) === "page-group-1111");
+
+    const groupCall = (token, name, args = {}) =>
+      fetch(`http://127.0.0.1:${port5}/g/${token}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
+      }).then((r) => r.json());
+    const evA = await groupCall(gA.token, "eval_js", { code: "6 * 7" });
+    check("分组 A 的 MCP eval 往返", evA.result?.content?.[0]?.text?.includes("42"), JSON.stringify(evA).slice(0, 120));
+    const pagesA = await groupCall(gA.token, "list_pages");
+    check("分组 A 可见本组页面", pagesA.result?.content?.[0]?.text?.includes("page-group-1111"));
+    const pagesB = await groupCall(gB.token, "list_pages");
+    check("分组 B 看不到 A 的页面（隔离）", pagesB.result?.content?.[0]?.text?.includes("没有已连接的页面"), pagesB.result?.content?.[0]?.text?.slice(0, 60));
+
+    const evals5 = (await (await api(`/admin/api/groups/${gA.id}/evals`, { headers: { Cookie: cookie5 } })).json()).evals || [];
+    const lastEval = evals5[evals5.length - 1];
+    check("管理后台可见 AI 调用记录（工具名 + 结果）", lastEval?.tool === "eval_js" && lastEval?.ok === true && String(lastEval?.result).includes("42"), JSON.stringify(lastEval));
+
+    await api(`/admin/api/groups/${gA.id}`, { method: "DELETE", headers: { Cookie: cookie5 } });
+    check("删除分组后其专属入口失效（404）", (await api(`/g/${gA.token}/client.js`)).status === 404);
+
+    const persisted = JSON.parse(await fsReadFile(dataFile5, "utf8"));
+    check("分组数据持久化到磁盘（组 B 存留）", persisted.groups.some((g) => g.token === gB.token));
+
+    gp.close();
+  } finally {
+    child5.kill("SIGKILL");
+    await rm(dataFile5, { force: true });
+  }
+
+  // stdio + --admin 组合应拒绝启动
+  {
+    const bad = spawn(process.execPath, [SERVER, "--admin", "x", "--port", String(await freePort())], { stdio: ["pipe", "pipe", "pipe"] });
+    const errText = await new Promise((resolve) => {
+      let buf = "";
+      bad.stderr.on("data", (d) => { buf += d.toString(); });
+      bad.on("exit", (code) => resolve(`exit=${code} ${buf}`));
+      setTimeout(() => resolve("timeout"), 3000);
+    });
+    check("stdio + --admin 组合拒绝启动", errText.includes("exit=1") && errText.includes("--transport http"), errText.slice(0, 80));
+    bad.kill("SIGKILL");
   }
 
   console.log(`\n结果: ${passed} 通过, ${failed} 失败`);

@@ -1,6 +1,6 @@
 # web-bridge — 让 AI 编辑器操纵任意静态网页的 MCP 工具
 
-web-bridge 是一个 MCP Server（Node 单进程，双接口），让 AI 编辑器在引入了 `client.js` 的静态网页上执行 JavaScript、读取控制台、模拟点击 / 输入。适用于跨浏览器、多标签页的本地联调，也支持部署到外网服务器（`--transport http`，见下文"远程部署"）。
+web-bridge 是一个 MCP Server（Node 单进程，双接口），让 AI 编辑器在引入了 `client.js` 的静态网页上执行 JavaScript、读取控制台、模拟点击 / 输入。适用于跨浏览器、多标签页的本地联调，也支持部署到外网服务器。
 
 ```
    AI 编辑器                ┌───────────────────┐              浏览器页面
@@ -13,26 +13,134 @@ web-bridge 是一个 MCP Server（Node 单进程，双接口），让 AI 编辑�
                            └───────────────────┘            └──────────────────┘
 ```
 
-AI 编辑器与浏览器**互不直连**：两条连接都终止于 MCP Server（`server.js`），AI 通过工具调用间接操纵页面。
+AI 编辑器与浏览器**互不直连**：两条连接都终止于 MCP Server（`server.js`，即中转服务器），AI 通过工具调用间接操纵页面。
 
-## 快速开始
+## 使用教程（三步）
+
+无论本机还是外网服务器，用法都是同一套三步：**① 用 node 启动中转服务器 → ② 编辑器里配置它的 http/https 地址 → ③ 静态网页里塞入 `<script>` 脚本**。
+
+### 第 1 步：用 node 启动 MCP 中转服务器
 
 ```bash
-cd web-bridge
-npm install          # 首次
+npm install            # 首次
+
+# 本机使用（默认只监听 127.0.0.1）
+node server.js --transport http --port 3210
+
+# 部署到外网服务器（公网必须开令牌；建议 systemd / pm2 托管常驻）
+node server.js --transport http --host 0.0.0.0 --port 3210 --token <secret>
 ```
 
-1. **在静态网页中引入脚本**（任意网页、任意端口均可，跨源已放行）：
+启动成功后有三个入口（以本机 3210 为例）：
 
-   ```html
-   <script src="http://127.0.0.1:3210/client.js"></script>
-   ```
+| 入口 | 地址 | 给谁用 |
+| --- | --- | --- |
+| MCP 接入地址 | `http://127.0.0.1:3210/mcp` | 填进编辑器（第 2 步） |
+| 页面脚本 | `http://127.0.0.1:3210/client.js` | 塞进网页（第 3 步） |
+| 状态页 | `http://127.0.0.1:3210/` | 浏览器打开，查看已连接页面 |
 
-2. **把 MCP 服务配置进 AI 编辑器**：把 [mcp.json](mcp.json) 里的 `<REPO>/server.js` 替换为本仓库的绝对路径，按下面对应编辑器的方式粘贴。编辑器拉起 `server.js` 的同时，WebSocket 服务（默认 `127.0.0.1:3210`）即就绪。
+命令行参数也可用环境变量 `PORT` / `HOST` / `TOKEN` / `TRANSPORT` 代替。
 
-3. **对 AI 说**："用 web-bridge 的 list_pages 看看连了哪些页面，然后 eval_js 帮我点一下 #btn、读一下控制台"。
+### 第 2 步：在编辑器中配置中转服务器的地址
 
-> 引入顺序说明：页面先引入也没关系，client.js 会自动重连（1s→2s→5s→10s 退避），编辑器启动后页面自动挂回。hub 状态页：http://127.0.0.1:3210/
+**ZCode / Claude Code**（项目根 `.mcp.json`，或 `claude mcp add`）、**Cursor**（`.cursor/mcp.json`）：
+
+```json
+{
+  "mcpServers": {
+    "web-bridge": {
+      "type": "http",
+      "url": "http://127.0.0.1:3210/mcp"
+    }
+  }
+}
+```
+
+部署在服务器上（开启令牌）时，url 换成对外地址并附带鉴权头：
+
+```json
+{
+  "mcpServers": {
+    "web-bridge": {
+      "type": "http",
+      "url": "https://your-domain.com/mcp",
+      "headers": { "Authorization": "Bearer <secret>" }
+    }
+  }
+}
+```
+
+> 注：Claude Desktop 不支持 http url 接入，只能用下文的 [stdio 模式](#另一种方式本地-stdio-模式编辑器代为启动服务器)。
+
+### 第 3 步：在静态网页中塞入脚本
+
+任意网页、任意端口均可（跨源已放行）：
+
+```html
+<script src="http://127.0.0.1:3210/client.js"></script>
+```
+
+服务器部署时脚本改为指向服务器（令牌模式必须带 `?token=`）：
+
+```html
+<script src="https://your-domain.com/client.js?token=<secret>"></script>
+```
+
+### 验证
+
+对 AI 说："用 web-bridge 的 list_pages 看看连了哪些页面，然后 eval_js 帮我点一下 #btn、读一下控制台"。能列出你的页面，即三步全部打通。
+
+> 引入顺序说明：页面先引入也没关系，client.js 会自动重连（1s→2s→5s→10s 退避），服务器启动后页面自动挂回。
+
+## 另一种方式：本地 stdio 模式（编辑器代为启动服务器）
+
+只在本地用、不想手动执行第 1 步的话，可以把 server.js 的路径直接配进编辑器：编辑器会自动把它作为子进程拉起，MCP 走进程的 stdin/stdout 管道（无需填 url），中转服务随之就绪；编辑器关闭时进程自动退出，不会残留。
+
+```json
+{
+  "mcpServers": {
+    "web-bridge": {
+      "command": "node",
+      "args": ["/path/to/web-bridge/server.js"],
+      "env": { "PORT": "3210" }
+    }
+  }
+}
+```
+
+（Cursor / Claude Desktop 同格式，路径替换为本仓库绝对路径；配置模板见 [mcp.json](mcp.json)。）
+
+两种模式怎么选：
+
+| | HTTP 模式（上面的三步教程） | stdio 模式 |
+| --- | --- | --- |
+| 谁启动 server.js | 你手动启动，可常驻在服务器上 | 编辑器自动拉起 / 关闭时退出 |
+| 编辑器配置项 | 只填 url | 填 command + args |
+| 适用场景 | 服务器部署、多设备 / 多人共用、远程接入 | 本地即开即用；Claude Desktop 唯一可用的模式 |
+
+两种模式下，浏览器页面侧的接法完全一致（都是第 3 步的 `<script>`）。
+
+## 管理后台与分组（多项目 / 多人共用）
+
+需要同时服务多个项目、或想让不同的人/编辑器拿到各自独立的接入点时，用**分组模式**启动：
+
+```bash
+node server.js --transport http --port 3210 --admin <管理密码>
+```
+
+打开 `http://127.0.0.1:3210/admin`，用管理密码登录后即可：
+
+- **创建分组**：每个分组自动生成专属密钥（token），并得到两段可直接复制的内容——
+  - 编辑器用的 **MCP JSON**（url 指向该分组专属的 `/g/<token>/mcp`）
+  - 网页用的 **联动 `<script>` 标签**（指向该分组专属的 `/g/<token>/client.js`）
+- **人类观察窗口**（1.5s 自动刷新，让 AI 和人看到同一份现场）：
+  - 在线页面列表（标题 / pageId / URL / 连接时间）
+  - 任意页面的 console 输出流
+  - **AI 调用记录**——AI 经 MCP 在分组页面里执行过的每条操作（工具、代码、耗时、结果），人可以逐条核对 AI 到底做了什么
+
+分组之间完全隔离：A 分组的编辑器看不到、也操作不了 B 分组的页面。分组数据持久化在 `data/groups.json`（可用 `--data <路径>` 自定义；文件含 token，勿提交仓库，`data/` 已在 .gitignore）。
+
+> 安全与限制：分组 token 等同于该分组的完整控制权（可在其页面执行任意 JS），请像密码一样保管；管理密码建议用 `openssl rand -hex 32` 生成；公网部署务必 TLS；分组模式下编辑器只支持 HTTP url 接入（stdio 不可用）。
 
 ## MCP 工具
 
@@ -47,65 +155,9 @@ npm install          # 首次
 
 `pageId` 规则：只连了一个页面时可省略；连了多个页面而不指定时，工具会返回错误和页面清单，AI 会自行补上 `pageId` 重试。
 
-## 各编辑器接入
+## 公网部署要点
 
-以下示例都假设仓库绝对路径为 `/path/to/web-bridge`，请按需替换。
-
-**ZCode / Claude Code**（项目根 `.mcp.json`，或 `claude mcp add`）：
-
-```json
-{
-  "mcpServers": {
-    "web-bridge": {
-      "command": "node",
-      "args": ["/path/to/web-bridge/server.js"],
-      "env": { "PORT": "3210" }
-    }
-  }
-}
-```
-
-**Cursor**（`.cursor/mcp.json`）：格式同上。
-
-**Claude Desktop**（`claude_desktop_config.json`）：格式同上。
-
-命令行参数：`node server.js --port 3210 --host 127.0.0.1 --token <secret>`（也可用环境变量 `PORT` / `HOST` / `TOKEN`）。
-
-## 远程部署（外网服务器）
-
-默认的 stdio 模式要求编辑器本地拉起进程；把 web-bridge 部署到外网服务器时，改用 HTTP 传输模式，编辑器**只需在 MCP 配置里填一个 url**：
-
-**1. 在服务器上启动**（建议 systemd / pm2 托管，公网必须开令牌）：
-
-```bash
-node server.js --transport http --host 0.0.0.0 --port 3210 --token <secret>
-```
-
-**2. 编辑器配置**（Claude Code / Cursor / ZCode 等，在原配置位置粘贴）：
-
-```json
-{
-  "mcpServers": {
-    "web-bridge": {
-      "type": "http",
-      "url": "https://your-domain.com/mcp",
-      "headers": { "Authorization": "Bearer <secret>" }
-    }
-  }
-}
-```
-
-直连（无反代/TLS）时 url 填 `http://<服务器IP>:3210/mcp`。注：Claude Desktop 仅支持本地 stdio 模式，不支持远程 url。
-
-**3. 页面侧脚本**改为指向服务器：
-
-```html
-<script src="https://your-domain.com/client.js?token=<secret>"></script>
-```
-
-说明：
-
-- **HTTPS 页面**只能连 `https/wss`（混合内容限制）。推荐用 nginx / caddy 等反向代理做 TLS 终止并转发到本服务；client.js 下发时会自动识别 `X-Forwarded-Proto` / `X-Forwarded-Host`，生成正确的 `wss://` 连接地址，无需额外配置。caddy 示例（自动签证书）：
+- **HTTPS 页面只能连 `https/wss`**（混合内容限制）。推荐用 nginx / caddy 等反向代理做 TLS 终止并转发到本服务；client.js 下发时会自动识别 `X-Forwarded-Proto` / `X-Forwarded-Host`，生成正确的 `wss://` 连接地址，无需额外配置。caddy 示例（自动签证书）：
 
   ```
   your-domain.com {

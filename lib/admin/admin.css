@@ -1,4 +1,4 @@
-/* web-bridge 管理后台 — 自动跟随系统深浅色（prefers-color-scheme） */
+/* web-bridge-mcp 管理后台 — 自动跟随系统深浅色（prefers-color-scheme） */
 
 :root {
   color-scheme: light dark;

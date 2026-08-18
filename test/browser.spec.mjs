@@ -1,6 +1,6 @@
 // browser.spec.mjs — Playwright 真实浏览器链路测试
 // 与 run-tests.mjs（Node 模拟页面）互补：这里用真实 Chromium 加载 test-page.html，
-// 经真实 WebSocket 连到 web-bridge，再通过 MCP HTTP 接口调用 6 个工具做端到端验证。
+// 经真实 WebSocket 连到 web-bridge-mcp，再通过 MCP HTTP 接口调用 6 个工具做端到端验证。
 // 最后一个用例覆盖分组模式：登录管理后台 → 建分组 → 复制专属配置 → 页面接入 → 人与 AI 共同观察。
 // 运行：npm run test:browser（首次前执行 npx playwright install chromium）
 
@@ -43,7 +43,7 @@ test.afterEach(async () => {
  * - 默认加载 test-page.html；传 html 则用 setContent（多页用例需不同标题来区分 pageId）
  * - 屏蔽测试页里写死的 3210 端口脚本，避免连到编辑器经 mcp.json 拉起的实例
  */
-async function openPage(browser, { html, title = "web-bridge 测试页" } = {}) {
+async function openPage(browser, { html, title = "web-bridge-mcp 测试页" } = {}) {
   const context = await browser.newContext();
   openContexts.push(context);
   await context.route("http://127.0.0.1:3210/**", (route) => route.abort());
@@ -59,14 +59,14 @@ async function openPage(browser, { html, title = "web-bridge 测试页" } = {}) 
   return { context, page, pageId: entry.pageId };
 }
 
-test.describe.serial("web-bridge 真实浏览器链路", () => {
+test.describe.serial("web-bridge-mcp 真实浏览器链路", () => {
   test("页面经 client.js 注册到 hub，list_pages 可见", async ({ browser }) => {
     const { pageId } = await openPage(browser);
     expect(pageId).toBeTruthy();
     const r = await callTool("list_pages");
     expect(r.isError).toBeFalsy();
     expect(r.text).toContain("共 1 个页面");
-    expect(r.text).toContain("web-bridge 测试页");
+    expect(r.text).toContain("web-bridge-mcp 测试页");
     expect(r.text).toContain("test-page.html");
   });
 
@@ -75,7 +75,7 @@ test.describe.serial("web-bridge 真实浏览器链路", () => {
     expect((await callTool("eval_js", { code: "1 + 1" })).text).toContain("2");
     expect((await callTool("eval_js", { code: "let a = 40; return a + 2;" })).text).toContain("42");
     expect((await callTool("eval_js", { code: "await new Promise(r => setTimeout(() => r('async-ok'), 50))" })).text).toContain("async-ok");
-    expect((await callTool("eval_js", { code: "document.title" })).text).toContain("web-bridge 测试页");
+    expect((await callTool("eval_js", { code: "document.title" })).text).toContain("web-bridge-mcp 测试页");
     expect((await callTool("eval_js", { code: '$("#count").textContent' })).text).toContain("0");
     const err = await callTool("eval_js", { code: "throw new Error('boom')" });
     expect(err.isError).toBe(true);
@@ -111,7 +111,7 @@ test.describe.serial("web-bridge 真实浏览器链路", () => {
     expect(body.text).toContain("点击次数");
     expect(body.text).toContain("点我 +1");
     const h2 = await callTool("get_text", { selector: "h2" });
-    expect(h2.text).toContain("web-bridge 测试页");
+    expect(h2.text).toContain("web-bridge-mcp 测试页");
   });
 
   test("多页 pageId 选择与断开清理", async ({ browser }) => {
@@ -139,7 +139,7 @@ test.describe.serial("web-bridge 真实浏览器链路", () => {
       timeout: 5_000,
     }).toBe(false);
     const ra = await callTool("eval_js", { code: "document.title" });
-    expect(ra.text).toContain("web-bridge 测试页");
+    expect(ra.text).toContain("web-bridge-mcp 测试页");
   });
 
   test("管理后台：创建分组并接入专属页面（AI 与人共同观察）", async ({ browser }) => {

@@ -1,8 +1,8 @@
 <!doctype html>
-<!-- web-bridge 手动测试页：真实浏览器链路验证
+<!-- web-bridge-mcp 手动测试页：真实浏览器链路验证
      用法：任意静态服务器打开本文件（或直接双击 file:// 打开），保持页面开启；
-     在 AI 编辑器（已配置 web-bridge MCP）里依次验证：
-       1. list_pages —— 应看到本页（标题含 "web-bridge 测试页"）
+     在 AI 编辑器（已配置 web-bridge-mcp MCP）里依次验证：
+       1. list_pages —— 应看到本页（标题含 "web-bridge-mcp 测试页"）
        2. eval_js：document.title / $ && $("#count").textContent
        3. click {selector: "#btn"} —— 计数应 +1，get_console 应有日志
        4. type {selector: "#name", text: "AI"} —— 输入框出现 "AI"
@@ -11,7 +11,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <title>web-bridge 测试页</title>
+  <title>web-bridge-mcp 测试页</title>
   <!-- 默认端口 3210；改过端口请同步修改这里 -->
   <script src="http://127.0.0.1:3210/client.js"></script>
   <style>
@@ -22,7 +22,7 @@
   </style>
 </head>
 <body>
-  <h2>web-bridge 测试页</h2>
+  <h2>web-bridge-mcp 测试页</h2>
   <p>点击次数：<span id="count">0</span></p>
   <button id="btn">点我 +1</button>
   <p>

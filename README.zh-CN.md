@@ -169,7 +169,7 @@ npx web-bridge-mcp --transport http --port 3210 --admin <管理密码>
   }
   ```
 
-- `/mcp` 端点开启令牌后支持三种鉴权写法：`Authorization: Bearer <secret>`（推荐，编辑器配置里填 headers）、`X-Web-Bridge-Token: <secret>`、url 参数 `?token=`。
+- `/mcp` 端点开启令牌后支持三种鉴权写法：`Authorization: Bearer <secret>`（推荐，编辑器配置里填 headers）、`X-Web-Bridge-MCP-Token: <secret>`、url 参数 `?token=`。
 - HTTP 传输为官方 **Streamable HTTP** 协议（stateless 模式），每个请求独立处理、共享同一个 hub，多个编辑器可同时连接。
 - 公网部署务必：设置 `--token`、用 TLS、防火墙只放行需要的端口。
 

@@ -170,7 +170,7 @@ Groups are fully isolated: an editor connected to group A cannot see or touch gr
   }
   ```
 
-- With a token enabled, `/mcp` accepts three auth styles: `Authorization: Bearer <secret>` (recommended; put it in editor headers config), `X-Web-Bridge-Token: <secret>`, or the `?token=` query parameter.
+- With a token enabled, `/mcp` accepts three auth styles: `Authorization: Bearer <secret>` (recommended; put it in editor headers config), `X-Web-Bridge-MCP-Token: <secret>`, or the `?token=` query parameter.
 - HTTP transport implements the official **Streamable HTTP** protocol (stateless): every request is handled independently while sharing the same hub, so multiple editors can connect at once.
 - For public deployments always: set `--token`, use TLS, and only open the ports you need in the firewall.
 

@@ -25,7 +25,7 @@ AI 编辑器与浏览器**互不直连**：两条连接都终止于 MCP Server�
 npm install            # 首次
 
 # 本机使用（默认只监听 127.0.0.1）
-node server.js --transport http --port 3210
+npm run serve
 
 # 部署到外网服务器（公网必须开令牌；建议 systemd / pm2 托管常驻）
 node server.js --transport http --host 0.0.0.0 --port 3210 --token <secret>
@@ -125,7 +125,7 @@ node server.js --transport http --host 0.0.0.0 --port 3210 --token <secret>
 需要同时服务多个项目、或想让不同的人/编辑器拿到各自独立的接入点时，用**分组模式**启动：
 
 ```bash
-node server.js --transport http --port 3210 --admin <管理密码>
+ADMIN_PASSWORD=<管理密码> npm run serve:groups
 ```
 
 打开 `http://127.0.0.1:3210/admin`，用管理密码登录后即可：

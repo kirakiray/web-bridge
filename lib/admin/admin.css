@@ -60,25 +60,15 @@ h3 { font-size: 14.5px; margin: 0 0 10px; }
 }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
 
-/* ---------- 语言切换 ---------- */
-.lang-switch {
-  display: inline-flex; align-items: center;
-  border: 1px solid var(--border); border-radius: 999px;
-  padding: 2px; background: var(--surface);
+/* ---------- 语言下拉框 ---------- */
+.lang-select {
+  font-size: 13px;
+  padding: 6px 8px;
+  cursor: pointer;
 }
 .lang-float {
   position: fixed; top: 18px; right: 24px; z-index: 10;
 }
-.lang-btn {
-  appearance: none; cursor: pointer;
-  border: none; background: transparent; color: var(--muted);
-  font-size: 12.5px; font-weight: 600; line-height: 1;
-  padding: 5px 10px; border-radius: 999px;
-  transition: background 0.15s, color 0.15s;
-}
-.lang-btn:hover { color: var(--text); }
-.lang-btn.active { background: var(--accent); color: #fff; }
-.lang-sep { width: 1px; height: 12px; background: var(--border); }
 
 /* ---------- 详情页头部（返回按钮 + 标题，与卡片同宽对齐） ---------- */
 .detail-head {

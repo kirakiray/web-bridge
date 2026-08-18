@@ -9,6 +9,9 @@
 </head>
 <body>
 <div id="login-view" hidden>
+  <div class="lang-float">
+    <div class="lang-switch" id="lang-switch-login" role="group" aria-label="Language"></div>
+  </div>
   <div class="login-card">
     <div class="brand">
       <span class="brand-dot"></span>
@@ -27,11 +30,7 @@
   <header class="topbar">
     <div class="brand"><span class="brand-dot"></span><span>web-bridge <span class="muted" id="brand-sub-top">管理后台</span></span></div>
     <div class="topbar-right">
-      <div class="lang-switch" role="group" aria-label="Language">
-        <button id="lang-zh" class="lang-btn active" type="button">中</button>
-        <span class="lang-sep"></span>
-        <button id="lang-en" class="lang-btn" type="button">EN</button>
-      </div>
+      <div class="lang-switch" id="lang-switch-top" role="group" aria-label="Language"></div>
       <button id="logout-btn" class="btn">退出登录</button>
     </div>
   </header>

@@ -66,6 +66,9 @@ h3 { font-size: 14.5px; margin: 0 0 10px; }
   border: 1px solid var(--border); border-radius: 999px;
   padding: 2px; background: var(--surface);
 }
+.lang-float {
+  position: fixed; top: 18px; right: 24px; z-index: 10;
+}
 .lang-btn {
   appearance: none; cursor: pointer;
   border: none; background: transparent; color: var(--muted);

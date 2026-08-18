@@ -1,7 +1,7 @@
 {
   "name": "web-bridge-mcp",
   "version": "1.0.0",
-  "description": "MCP Server：AI 编辑器经 stdio 调用工具，间接在引入 client.js 的静态网页上 eval JS / 读取控制台 / 模拟操作",
+  "description": "MCP Server: AI editors call tools over stdio/HTTP to eval JS, read the console, and simulate input on any static web page that includes client.js",
   "type": "module",
   "main": "server.js",
   "bin": {

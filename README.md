@@ -111,7 +111,7 @@ If you only use it locally and don't want to run step 1 manually, put the server
 }
 ```
 
-(Same format for Cursor / Claude Desktop; if you cloned this repo, use `"command": "node", "args": ["/path/to/web-bridge/server.js"]` — see the template [mcp.json](mcp.json).)
+(Same format for Cursor / Claude Desktop; if you cloned this repo, use `"command": "node", "args": ["/path/to/web-bridge-mcp/server.js"]` — see the template [mcp.json](mcp.json).)
 
 How to choose:
 

@@ -110,7 +110,7 @@ npx web-bridge-mcp --transport http --host 0.0.0.0 --port 3210 --token <secret>
 }
 ```
 
-（Cursor / Claude Desktop 同格式；clone 本仓库使用的话改为 `"command": "node", "args": ["/path/to/web-bridge/server.js"]`，配置模板见 [mcp.json](mcp.json)。）
+（Cursor / Claude Desktop 同格式；clone 本仓库使用的话改为 `"command": "node", "args": ["/path/to/web-bridge-mcp/server.js"]`，配置模板见 [mcp.json](mcp.json)。）
 
 两种模式怎么选：
 

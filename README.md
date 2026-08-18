@@ -1,6 +1,6 @@
-# web-bridge — 让 AI 编辑器操纵任意静态网页的 MCP 工具
+# web-bridge-mcp — 让 AI 编辑器操纵任意静态网页的 MCP 工具
 
-web-bridge 是一个 MCP Server（Node 单进程，双接口），让 AI 编辑器在引入了 `client.js` 的静态网页上执行 JavaScript、读取控制台、模拟点击 / 输入。适用于跨浏览器、多标签页的本地联调，也支持部署到外网服务器。
+**web-bridge-mcp** 是一个 MCP Server（Node 单进程，双接口），让 AI 编辑器在引入了 `client.js` 的静态网页上执行 JavaScript、读取控制台、模拟点击 / 输入。适用于跨浏览器、多标签页的本地联调，也支持部署到外网服务器。
 
 ```
    AI 编辑器                ┌───────────────────┐              浏览器页面
@@ -48,7 +48,7 @@ npx web-bridge-mcp --transport http --host 0.0.0.0 --port 3210 --token <secret>
 ```json
 {
   "mcpServers": {
-    "web-bridge": {
+    "web-bridge-mcp": {
       "type": "http",
       "url": "http://127.0.0.1:3210/mcp"
     }
@@ -61,7 +61,7 @@ npx web-bridge-mcp --transport http --host 0.0.0.0 --port 3210 --token <secret>
 ```json
 {
   "mcpServers": {
-    "web-bridge": {
+    "web-bridge-mcp": {
       "type": "http",
       "url": "https://your-domain.com/mcp",
       "headers": { "Authorization": "Bearer <secret>" }
@@ -88,7 +88,7 @@ npx web-bridge-mcp --transport http --host 0.0.0.0 --port 3210 --token <secret>
 
 ### 验证
 
-对 AI 说："用 web-bridge 的 list_pages 看看连了哪些页面，然后 eval_js 帮我点一下 #btn、读一下控制台"。能列出你的页面，即三步全部打通。
+对 AI 说："用 web-bridge-mcp 的 list_pages 看看连了哪些页面，然后 eval_js 帮我点一下 #btn、读一下控制台"。能列出你的页面，即三步全部打通。
 
 > 引入顺序说明：页面先引入也没关系，client.js 会自动重连（1s→2s→5s→10s 退避），服务器启动后页面自动挂回。
 
@@ -99,7 +99,7 @@ npx web-bridge-mcp --transport http --host 0.0.0.0 --port 3210 --token <secret>
 ```json
 {
   "mcpServers": {
-    "web-bridge": {
+    "web-bridge-mcp": {
       "command": "npx",
       "args": ["-y", "web-bridge-mcp"],
       "env": { "PORT": "3210" }

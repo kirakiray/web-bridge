@@ -1,16 +1,16 @@
 {
-  "_comment": "web-bridge MCP 配置模板（二选一）。http（推荐）：先在终端/服务器上运行 node server.js --transport http --port 3210，再把 url 指向该中转服务器；stdio：无需手动启动，编辑器按 _stdio_example 拉起 server.js 子进程（路径替换为本仓库绝对路径）。多分组共用时用 --admin 启动并从管理后台复制各分组专属配置（见 README「管理后台与分组」）。详见 README.md。",
+  "_comment": "web-bridge-mcp 配置模板（二选一）。http（推荐）：先在终端/服务器上运行 npx web-bridge-mcp --transport http --port 3210，再把 url 指向该中转服务器；stdio：无需手动启动，编辑器按 _stdio_example 拉起（npx 自动安装运行；clone 本仓库的话把 command/args 换成 node + 本仓库绝对路径下的 server.js）。多分组共用时用 --admin 启动并从管理后台复制各分组专属配置（见 README「管理后台与分组」）。详见 README.md。",
   "mcpServers": {
-    "web-bridge": {
+    "web-bridge-mcp": {
       "type": "http",
       "url": "http://127.0.0.1:3210/mcp"
     }
   },
   "_stdio_example": {
     "mcpServers": {
-      "web-bridge": {
-        "command": "node",
-        "args": ["<REPO>/server.js"],
+      "web-bridge-mcp": {
+        "command": "npx",
+        "args": ["-y", "web-bridge-mcp"],
         "env": {
           "PORT": "3210",
           "HOST": "127.0.0.1"
@@ -20,7 +20,7 @@
   },
   "_remote_example": {
     "mcpServers": {
-      "web-bridge": {
+      "web-bridge-mcp": {
         "type": "http",
         "url": "https://your-domain.com/mcp",
         "headers": { "Authorization": "Bearer <secret>" }

@@ -22,13 +22,13 @@ AI 编辑器与浏览器**互不直连**：两条连接都终止于 MCP Server�
 ### 第 1 步：用 node 启动 MCP 中转服务器
 
 ```bash
-npm install            # 首次
+# npm 包：web-bridge-mcp —— 可直接 npx 运行；clone 本仓库的话先 npm install
 
 # 本机使用（默认只监听 127.0.0.1）
-npm run serve
+npx web-bridge-mcp --transport http        # 仓库内等价于 npm run serve
 
 # 部署到外网服务器（公网必须开令牌；建议 systemd / pm2 托管常驻）
-node server.js --transport http --host 0.0.0.0 --port 3210 --token <secret>
+npx web-bridge-mcp --transport http --host 0.0.0.0 --port 3210 --token <secret>
 ```
 
 启动成功后有三个入口（以本机 3210 为例）：
@@ -100,15 +100,15 @@ node server.js --transport http --host 0.0.0.0 --port 3210 --token <secret>
 {
   "mcpServers": {
     "web-bridge": {
-      "command": "node",
-      "args": ["/path/to/web-bridge/server.js"],
+      "command": "npx",
+      "args": ["-y", "web-bridge-mcp"],
       "env": { "PORT": "3210" }
     }
   }
 }
 ```
 
-（Cursor / Claude Desktop 同格式，路径替换为本仓库绝对路径；配置模板见 [mcp.json](mcp.json)。）
+（Cursor / Claude Desktop 同格式；clone 本仓库使用的话改为 `"command": "node", "args": ["/path/to/web-bridge/server.js"]`，配置模板见 [mcp.json](mcp.json)。）
 
 两种模式怎么选：
 
@@ -125,8 +125,9 @@ node server.js --transport http --host 0.0.0.0 --port 3210 --token <secret>
 需要同时服务多个项目、或想让不同的人/编辑器拿到各自独立的接入点时，用**分组模式**启动：
 
 ```bash
-npm run serve:groups                    # 管理密码默认 123456
-ADMIN_PASSWORD=<强密码> npm run serve:groups   # 公网部署时用环境变量覆盖
+npx web-bridge-mcp --transport http --port 3210 --admin <管理密码>
+
+# 仓库内：npm run serve:groups（管理密码默认 123456，可用 ADMIN_PASSWORD 环境变量覆盖）
 ```
 
 打开 `http://127.0.0.1:3210/admin`，用管理密码登录后即可：

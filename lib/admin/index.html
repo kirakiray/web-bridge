@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>web-bridge 管理后台</title>
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<div id="login-view" hidden>
+  <div class="login-card">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span>web-bridge <span class="muted">管理后台</span></span>
+    </div>
+    <p class="muted login-hint">输入管理密码登录，管理分组并观察 AI 与页面</p>
+    <div class="login-form">
+      <input id="pw" type="password" placeholder="管理密码" autocomplete="current-password">
+      <button id="login-btn" class="btn primary">登录</button>
+    </div>
+    <div class="err" id="login-err"></div>
+  </div>
+</div>
+
+<div id="app-view" hidden>
+  <header class="topbar">
+    <div class="brand"><span class="brand-dot"></span><span>web-bridge <span class="muted">管理后台</span></span></div>
+    <button id="logout-btn" class="btn">退出登录</button>
+  </header>
+
+  <section id="groups-section" class="card">
+    <div class="section-head">
+      <h2>分组</h2>
+      <div class="create-row">
+        <input id="group-name" placeholder="新分组名称，如：商城项目 / 联调手机">
+        <button id="create-btn" class="btn primary">创建分组</button>
+      </div>
+    </div>
+    <table id="groups-table">
+      <thead><tr><th>分组</th><th>创建时间</th><th>在线页面</th><th class="ops-col">操作</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="muted foot-note">每个分组有专属密钥（token）：编辑器用它接入 MCP，网页用它引入联动脚本，分组间完全隔离。token 等同于该分组的完整控制权，请妥善保管。</p>
+  </section>
+
+  <section id="detail" hidden>
+    <div class="detail-head">
+      <button id="back-btn" class="btn">&larr; 返回</button>
+      <h2 id="detail-name"></h2>
+    </div>
+
+    <div class="card">
+      <h3>编辑器 MCP 配置 <span class="muted sub">复制后粘进 ZCode / Claude Code / Cursor 的 mcp 配置</span></h3>
+      <div class="snip"><pre id="mcp-snippet"></pre><button id="copy-mcp" class="btn">复制</button></div>
+      <h3>网页联动脚本 <span class="muted sub">塞进要观察 / 操控的静态页面</span></h3>
+      <div class="snip"><pre id="script-snippet"></pre><button id="copy-script" class="btn">复制</button></div>
+    </div>
+
+    <div class="card">
+      <h3>在线页面 <span class="muted sub">自动刷新</span></h3>
+      <table id="pages-table">
+        <thead><tr><th>标题</th><th>pageId</th><th>URL</th><th>连接时间</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>页面控制台</h3>
+      <select id="console-page" class="console-select"></select>
+      <pre id="console-view" class="console"></pre>
+    </div>
+
+    <div class="card">
+      <h3>AI 调用记录 <span class="muted sub">AI 经 MCP 在本分组页面里执行过的操作，最新在前</span></h3>
+      <table id="evals-table">
+        <thead><tr><th>时间</th><th>工具</th><th>结果</th><th>耗时</th><th>代码</th><th>返回</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script src="/admin/admin.js" defer></script>
+</body>
+</html>

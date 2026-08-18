@@ -73,7 +73,9 @@ When deployed on a server (with token), replace the URL with the public one and 
 }
 ```
 
-> Note: Claude Desktop only supports the local [stdio mode](#alternative-local-stdio-mode-editor-starts-the-server) below.
+> Note 1: `type` refers to the **MCP transport protocol** (`http` = Streamable HTTP transport; `stdio` = process pipe, see below) — it is independent of the URL's own protocol. So even if the `url` is `https://`, `type` stays `http`: https is simply http over TLS, and there is no separate `"https"` transport type.
+>
+> Note 2: Claude Desktop only supports the local [stdio mode](#alternative-local-stdio-mode-editor-starts-the-server) below.
 
 ### Step 3: Embed the script into your static page
 

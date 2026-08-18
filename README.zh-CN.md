@@ -72,7 +72,9 @@ npx web-bridge-mcp --transport http --host 0.0.0.0 --port 3210 --token <secret>
 }
 ```
 
-> 注：Claude Desktop 不支持 http url 接入，只能用下文的 [stdio 模式](#另一种方式本地-stdio-模式编辑器代为启动服务器)。
+> 注 1：`type` 指的是 **MCP 传输协议的类型**（`http` = Streamable HTTP 传输；`stdio` = 进程管道，见下文），与 URL 自身的协议无关。所以即使 `url` 是 `https://`，`type` 也仍然写 `http`——https 本质上就是套了 TLS 的 http，传输类型没有单独的 `"https"` 这个值。
+>
+> 注 2：Claude Desktop 不支持 http url 接入，只能用下文的 [stdio 模式](#另一种方式本地-stdio-模式编辑器代为启动服务器)。
 
 ### 第 3 步：在静态网页中塞入脚本
 

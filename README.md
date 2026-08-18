@@ -125,7 +125,8 @@ node server.js --transport http --host 0.0.0.0 --port 3210 --token <secret>
 需要同时服务多个项目、或想让不同的人/编辑器拿到各自独立的接入点时，用**分组模式**启动：
 
 ```bash
-ADMIN_PASSWORD=<管理密码> npm run serve:groups
+npm run serve:groups                    # 管理密码默认 123456
+ADMIN_PASSWORD=<强密码> npm run serve:groups   # 公网部署时用环境变量覆盖
 ```
 
 打开 `http://127.0.0.1:3210/admin`，用管理密码登录后即可：

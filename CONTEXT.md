@@ -30,6 +30,7 @@ AI 编辑器(MCP客户端) ←stdio 或 HTTP→ [server.js 中转进程] ←WebS
 | `lib/admin/` | 管理后台前端（index.html + admin.css + admin.js，无框架无构建，启动时读入内存缓存；admin.js 内置 zh-CN/en/ja 三语言 i18n） |
 | `test/run-tests.mjs` | Node e2e（`npm test`）：自实现极简 MCP stdio 客户端 + FakePage 模拟页面 + DOM shim，覆盖 5 个实例场景（默认/令牌/HTTP 传输/HTTP+令牌/分组模式） |
 | `test/browser.spec.mjs` + `playwright.config.mjs` | Playwright 真实浏览器 e2e（`npm run test:browser`，需先 `npx playwright install chromium`）：真实 Chromium 加载 `test/test-page.html`，经真实 WS 验证 6 个工具 + 分组模式全流程。两个独立实例用专用端口 3399/3398，避免与 3210 冲突；workers=1 串行 |
+| `static/` | 手动测试静态页（`npm run test-static` 用 http-server 起在 127.0.0.1:4321，`-c-1` 禁缓存）：`test-a.html` 交互验证（click/type/计数）、`test-b.html` 控制台与文本验证（多级别日志/未捕获异常/get_text）。均引入 `http://127.0.0.1:3210/client.js`，两页同开可验证 `list_pages` 多页选择 |
 | `mcp.json` | 编辑器配置模板（http/stdio/远程三种示例） |
 
 ## 6 个 MCP 工具（lib/mcp.mjs）
@@ -75,4 +76,5 @@ npm run serve            # http 单实例
 npm run serve:groups     # http + 分组模式（密码默认 123456，ADMIN_PASSWORD 可覆盖）
 npm test                 # Node e2e 全量
 npm run test:browser     # Playwright 真实浏览器 e2e
+npm run test-static      # 静态测试页服务（http-server，127.0.0.1:4321，根目录 static/）
 ```

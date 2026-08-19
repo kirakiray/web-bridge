@@ -1,0 +1,44 @@
+<!doctype html>
+<!-- web-bridge-mcp 静态测试页 A：交互验证
+     用法：npm run test-static 后访问 http://127.0.0.1:4321/test-a.html，保持页面开启；
+     在 AI 编辑器（已配置 web-bridge-mcp MCP）里依次验证：
+       1. list_pages —— 应看到本页（标题含 "静态测试页 A"）
+       2. click {selector: "#btn"} —— 计数 +1，get_console 应有日志
+       3. type {selector: "#name", text: "AI"} —— 输入框出现 "AI"，问候语联动
+       4. eval_js —— $("#count").textContent 读取计数
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>静态测试页 A - 交互</title>
+  <!-- 默认端口 3210；改过端口请同步修改这里 -->
+  <script src="http://127.0.0.1:3210/client.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 560px; margin: 40px auto; }
+    button { font-size: 16px; padding: 8px 16px; }
+    input { font-size: 16px; padding: 6px; }
+  </style>
+</head>
+<body>
+  <h2>静态测试页 A - 交互</h2>
+  <p>点击次数：<span id="count">0</span></p>
+  <button id="btn">点我 +1</button>
+  <p>
+    <label>名字：<input id="name" placeholder="用 type 工具填我"></label>
+    <span id="greet"></span>
+  </p>
+
+  <script>
+    let n = 0;
+    document.getElementById("btn").addEventListener("click", () => {
+      n++;
+      document.getElementById("count").textContent = String(n);
+      console.log("按钮被点击，当前计数:", n); // 会被 client.js 捕获，供 get_console 验证
+    });
+    document.getElementById("name").addEventListener("input", (e) => {
+      document.getElementById("greet").textContent = e.target.value ? `你好，${e.target.value}！` : "";
+    });
+    console.info("静态测试页 A 已加载");
+  </script>
+</body>
+</html>

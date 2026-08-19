@@ -96,6 +96,8 @@ When deployed on a server, point the script at it (with token if enabled):
 Tell the AI: "Use web-bridge-mcp's list_pages to see which pages are connected, then eval_js to click #btn and read the console". If it lists your page, all three steps are wired up.
 
 > Order doesn't matter: the page can be opened before the server — client.js auto-reconnects (1s→2s→5s→10s backoff) and attaches as soon as the server is up. Hub status page: http://127.0.0.1:3210/
+>
+> Once embedded, the page shows a small draggable status bubble in the top-right corner (green = connected, yellow = connecting, red = disconnected), so you can always tell the page is bridged to the MCP server and whether the link is alive. Double-click the bubble to see exactly what the MCP server has done to the page — every operation with its natural-language note, success/failure and duration, grouped per page load.
 
 ## Alternative: local stdio mode (the editor starts the server)
 
@@ -154,13 +156,15 @@ Groups are fully isolated: an editor connected to group A cannot see or touch gr
 | Tool | Params | Description |
 | --- | --- | --- |
 | `list_pages` | — | List connected pages (pageId, title, URL, connected-at) |
-| `eval_js` | `code`, optional `pageId` / `timeoutMs` | Execute arbitrary JS in the page and return the serialized result; `await` supported; last expression is returned automatically, or use `return` in a statement block; `$` / `$$` (querySelector / querySelectorAll) provided |
+| `eval_js` | `code`, optional `pageId` / `timeoutMs` / `note` | Execute arbitrary JS in the page and return the serialized result; `await` supported; last expression is returned automatically, or use `return` in a statement block; `$` / `$$` (querySelector / querySelectorAll) provided |
 | `get_console` | optional `pageId` / `limit` | Read the page's recent console output and uncaught errors |
-| `click` | `selector`, optional `pageId` | Find element by CSS selector and click() (scrolls into view first) |
-| `type` | `selector` / `text`, optional `pageId` | Focus, write text, dispatch input / change events (contenteditable compatible) |
-| `get_text` | optional `selector` (default body), `pageId` | Read element innerText |
+| `click` | `selector`, optional `pageId` / `note` | Find element by CSS selector and click() (scrolls into view first) |
+| `type` | `selector` / `text`, optional `pageId` / `note` | Focus, write text, dispatch input / change events (contenteditable compatible) |
+| `get_text` | optional `selector` (default body), `pageId` / `note` | Read element innerText |
 
 `pageId` rule: it can be omitted when exactly one page is connected; with multiple pages and no pageId the tool returns an error plus the page list, and the AI retries with the right pageId.
+
+`note`: a natural-language description of the operation, shown to the human on the page side (in the status-bubble operation log, above the executed code). The AI is instructed to always provide it; click/type/get_text fall back to a short label like `click #btn` when omitted.
 
 ## Public Deployment Notes
 

@@ -1,0 +1,58 @@
+<!doctype html>
+<!-- web-bridge-mcp 静态测试页 B：控制台与文本验证
+     用法：npm run test-static 后访问 http://127.0.0.1:4321/test-b.html，保持页面开启；
+     在 AI 编辑器（已配置 web-bridge-mcp MCP）里依次验证：
+       1. list_pages —— 与测试页 A 同时打开时应返回两页（验证多页 pageId 选择）
+       2. get_text —— 返回本页正文（含下方待办列表）
+       3. click {selector: "#log-btn"/"#warn-btn"/"#err-btn"} —— get_console 出现对应级别日志
+       4. click {selector: "#boom"} —— 触发未捕获异常，get_console 可见 error 堆栈
+       5. click {selector: "#toggle"} —— #status 在 开/关 间切换，可 eval_js 读取
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>静态测试页 B - 控制台与文本</title>
+  <!-- 默认端口 3210；改过端口请同步修改这里 -->
+  <script src="http://127.0.0.1:3210/client.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 560px; margin: 40px auto; }
+    button { font-size: 14px; padding: 6px 12px; margin: 2px; }
+    #status { font-weight: bold; color: #c00; }
+  </style>
+</head>
+<body>
+  <h2>静态测试页 B - 控制台与文本</h2>
+  <p>本页用于验证 get_console / get_text / click 工具。</p>
+
+  <h3>待办列表（get_text 验证）</h3>
+  <ul id="todo">
+    <li>接入 web-bridge-mcp</li>
+    <li>打开两个测试页验证 list_pages</li>
+    <li>点击下方按钮验证 get_console</li>
+  </ul>
+
+  <h3>控制台输出</h3>
+  <button id="log-btn">console.log</button>
+  <button id="warn-btn">console.warn</button>
+  <button id="err-btn">console.error</button>
+  <button id="boom">抛出未捕获异常</button>
+
+  <h3>状态切换（click + eval_js 验证）</h3>
+  <p>当前状态：<span id="status">关</span></p>
+  <button id="toggle">切换状态</button>
+
+  <script>
+    document.getElementById("log-btn").addEventListener("click", () => console.log("普通日志：一切正常"));
+    document.getElementById("warn-btn").addEventListener("click", () => console.warn("警告日志：请注意"));
+    document.getElementById("err-btn").addEventListener("click", () => console.error("错误日志：模拟出错"));
+    document.getElementById("boom").addEventListener("click", () => {
+      throw new Error("模拟未捕获异常"); // 会被 client.js 捕获并上报
+    });
+    document.getElementById("toggle").addEventListener("click", () => {
+      const el = document.getElementById("status");
+      el.textContent = el.textContent === "开" ? "关" : "开";
+    });
+    console.info("静态测试页 B 已加载");
+  </script>
+</body>
+</html>

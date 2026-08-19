@@ -1,6 +1,6 @@
 {
   "name": "web-bridge-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP Server: AI editors call tools over stdio/HTTP to eval JS, read the console, and simulate input on any static web page that includes client.js",
   "type": "module",
   "main": "server.js",
@@ -30,7 +30,8 @@
     "serve": "node server.js --transport http",
     "serve:groups": "node server.js --transport http --admin \"${ADMIN_PASSWORD:-123456}\"",
     "test": "node test/run-tests.mjs",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "test-static": "http-server static -p 4321 -c-1"
   },
   "engines": {
     "node": ">=18"
@@ -41,6 +42,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1"
+    "@playwright/test": "^1.62.1",
+    "http-server": "^14.1.1"
   }
 }

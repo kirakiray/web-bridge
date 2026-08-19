@@ -102,6 +102,7 @@ class McpClient {
 class FakePage {
   constructor(port, pageId, { url = "http://test.local/page.html", title = "测试页", token = "", wsPath = "" } = {}) {
     this.pageId = pageId;
+    this.evalMsgs = []; // 收到的 eval 下发消息（含 note 字段），供断言透传链路
     this.welcome = new Promise((resolve, reject) => {
       this._resolveWelcome = resolve;
       setTimeout(() => reject(new Error("未收到 welcome")), 5000);
@@ -114,7 +115,7 @@ class FakePage {
     this.ws.on("message", (data) => {
       const msg = JSON.parse(data.toString());
       if (msg.type === "welcome") this._resolveWelcome(msg.pageId);
-      if (msg.type === "eval") this.handleEval(msg);
+      if (msg.type === "eval") { this.evalMsgs.push(msg); this.handleEval(msg); }
     });
   }
   send(obj) { this.ws.send(JSON.stringify(obj)); }
@@ -206,6 +207,11 @@ async function main() {
   check("type 预设", !r8.isError && el.value === "你好", r8.text);
   const r9 = await mcp.callTool("get_text", {});
   check("get_text 默认 body", !r9.isError && r9.text.includes("点我"), r9.text);
+
+  console.log("— note 操作说明透传 —");
+  const r9n = await mcp.callTool("eval_js", { code: "'with-note'", note: "测试操作说明" });
+  check("eval_js 的 note 随 eval 消息下发到页面", !r9n.isError && page.evalMsgs.some((m) => m.note === "测试操作说明" && m.code.includes("with-note")), r9n.text);
+  check("预设工具缺省 note 时回退短标签", page.evalMsgs.some((m) => m.note === "click #btn"));
 
   console.log("— 多页 pageId 选择 —");
   const page2 = new FakePage(port, "page-bbbb-2222", { url: "http://test.local/other.html", title: "第二页" });

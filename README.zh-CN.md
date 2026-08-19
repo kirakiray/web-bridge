@@ -96,7 +96,7 @@ npx web-bridge-mcp --transport http --host 0.0.0.0 --port 3210 --token <secret>
 
 > 引入顺序说明：页面先引入也没关系，client.js 会自动重连（1s→2s→5s→10s 退避），服务器启动后页面自动挂回。
 >
-> 引入后，页面右上角会出现一个可拖拽的小状态气泡（绿=已连接、黄=连接中、红=已断开），随时能看出本页已接入 MCP 服务、链路是否存活。双击气泡可查看 MCP 服务端对本页做过的全部操作——每条 eval 指令的成功/失败与耗时，按页面加载分组，刷新后新旧记录隔开显示。
+> 引入后，页面右上角会出现一个可拖拽的小状态气泡（绿=已连接、黄=连接中、红=已断开），随时能看出本页已接入 MCP 服务、链路是否存活。双击气泡可查看 MCP 服务端对本页做过的全部操作——每条操作的自然语言说明、成功/失败与耗时，按页面加载分组，刷新后新旧记录隔开显示。
 
 ## 另一种方式：本地 stdio 模式（编辑器代为启动服务器）
 
@@ -155,13 +155,15 @@ npx web-bridge-mcp --transport http --port 3210 --admin <管理密码>
 | 工具 | 参数 | 说明 |
 | --- | --- | --- |
 | `list_pages` | — | 列出已连接页面（pageId、标题、URL、连接时间） |
-| `eval_js` | `code`，可选 `pageId` / `timeoutMs` | 在页面执行任意 JS 并返回序列化结果；支持 `await`；最后一句表达式自动返回，语句块可用 `return`；预置 `$` / `$$`（querySelector / querySelectorAll） |
+| `eval_js` | `code`，可选 `pageId` / `timeoutMs` / `note` | 在页面执行任意 JS 并返回序列化结果；支持 `await`；最后一句表达式自动返回，语句块可用 `return`；预置 `$` / `$$`（querySelector / querySelectorAll） |
 | `get_console` | 可选 `pageId` / `limit` | 读取页面最近的 console 输出与未捕获异常 |
-| `click` | `selector`，可选 `pageId` | 查找元素并触发 click()（先 scrollIntoView） |
-| `type` | `selector` / `text`，可选 `pageId` | 聚焦、写入文本、派发 input / change 事件（兼容 contenteditable） |
-| `get_text` | 可选 `selector`（默认 body）、`pageId` | 读取元素 innerText |
+| `click` | `selector`，可选 `pageId` / `note` | 查找元素并触发 click()（先 scrollIntoView） |
+| `type` | `selector` / `text`，可选 `pageId` / `note` | 聚焦、写入文本、派发 input / change 事件（兼容 contenteditable） |
+| `get_text` | 可选 `selector`（默认 body）、`pageId` / `note` | 读取元素 innerText |
 
 `pageId` 规则：只连了一个页面时可省略；连了多个页面而不指定时，工具会返回错误和页面清单，AI 会自行补上 `pageId` 重试。
+
+`note`：本次操作的自然语言说明，会展示给页面端用户（气泡操作记录里加粗显示在代码上方）。AI 被引导始终填写；click/type/get_text 漏填时回退为 `click #btn` 这类短标签。
 
 ## 公网部署要点
 

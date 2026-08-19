@@ -375,6 +375,7 @@
   function recordEval(msg) {
     opSession.entries.push({
       ts: Date.now(), reqId: msg.reqId,
+      note: typeof msg.note === "string" && msg.note ? msg.note.slice(0, 500) : null, // AI 附带的自然语言操作说明
       code: typeof msg.code === "string" ? msg.code.slice(0, OP_CODE_MAX) : String(msg.code),
       ok: null, durationMs: null, // null = 执行中，eval-result 回包后回填
     });
@@ -504,14 +505,22 @@
       css(badge, { color: "#9ca3af" });
     }
     line.appendChild(time); line.appendChild(badge);
+    var noteEl = null;
+    if (entry.note) { // 自然语言操作说明：主行，比代码显眼
+      noteEl = document.createElement("div");
+      noteEl.textContent = entry.note;
+      css(noteEl, { margin: "3px 0 0", fontSize: "13px", fontWeight: "600", color: "#111827", lineHeight: "1.5" });
+    }
     var pre = document.createElement("pre");
     pre.textContent = entry.code; // textContent 填充，杜绝代码注入
     css(pre, {
-      margin: "4px 0 0", padding: "8px", background: "#f5f5f5", borderRadius: "6px",
-      fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: "12px", lineHeight: "1.5",
-      whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: "140px", overflowY: "auto",
+      margin: "4px 0 0", padding: "6px 8px", background: "#f5f5f5", borderRadius: "6px",
+      fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: "11px", lineHeight: "1.5",
+      color: "#6b7280", whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: "100px", overflowY: "auto",
     });
-    item.appendChild(line); item.appendChild(pre);
+    item.appendChild(line);
+    if (noteEl) item.appendChild(noteEl);
+    item.appendChild(pre);
     return item;
   }
 

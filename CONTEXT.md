@@ -21,7 +21,7 @@ AI 编辑器(MCP客户端) ←stdio 或 HTTP→ [server.js 中转进程] ←WebS
 | 文件 | 职责 |
 | --- | --- |
 | `server.js` | 入口。解析 `--port/--host/--token/--transport/--admin/--data`（或环境变量 PORT/HOST/TOKEN/TRANSPORT/ADMIN_PASSWORD）；有 `--admin` 走分组模式，否则单实例模式；stdio 模式下监听 stdin 关闭退出 |
-| `client.js` | 浏览器端零依赖脚本（IIFE）。WS 连接+自动重连(1s→2s→5s→10s)、pageId 存 sessionStorage、捕获 console/未捕获异常(500ms 节流批量上报)、执行 eval 并安全序列化结果回传。server 下发时会在文件头注入 `window.__WEB_BRIDGE__ = {wsUrl, token}` 配置 |
+| `client.js` | 浏览器端零依赖脚本（IIFE）。WS 连接+自动重连(1s→2s→5s→10s)、pageId 存 sessionStorage、捕获 console/未捕获异常(500ms 节流批量上报)、执行 eval 并安全序列化结果回传、右上角可拖拽连接状态气泡（绿=已连接/黄=连接中/红=已断开，位置记忆到 sessionStorage，SPA 清 body 后自动挂回）、双击气泡弹出「MCP 对本页的操作记录」对话框（每条 eval 指令+成功/失败+耗时，sessionStorage 按页面加载分组，刷新隔开）。server 下发时会在文件头注入 `window.__WEB_BRIDGE__ = {wsUrl, token}` 配置 |
 | `lib/registry.mjs` | **核心共用模块**：页面注册表（hello 校验/重复 pageId 顶替）、console 环形缓冲(每页 500 条，断连保留)、eval 路由与超时(默认 30s 上限 120s)、eval 调用历史(环形 200 条，管理后台审计用)。单实例与分组模式共用 |
 | `lib/hub.mjs` | 单实例模式的 HTTP+WS 宿主：`/client.js` 下发(注入 wsUrl，支持 CORS 与 Chrome Local Network Access 预检)、`/` 状态页、`/mcp` 转发、WS upgrade、30s 心跳清死连接、按 `X-Forwarded-*` 推断对外 wss 地址（反代 TLS 终止场景） |
 | `lib/mcp.mjs` | MCP 工具层。`createMcpServer(hub)` 注册 6 个工具（stdio/http 两模式共用）；`registerTools(hub)` 为 stdio 模式接 StdioServerTransport。hub 需要 `introScript` 字段（分组模式提供分组专属脚本地址） |
@@ -66,6 +66,8 @@ eval 执行约定（client.js `compile`）：代码先按表达式包装 `async 
 - 分组模式下各分组独立 registry（页面池/console/eval 历史互不可见），分组删除时 `registry.close()` 断开该组所有页面。
 - 管理后台登录失败延迟 300ms 拖慢暴力破解；会话仅存内存（重启失效），TTL 7 天。
 - npm 包 `files` 只发布 `server.js client.js lib/ mcp.json`；Node ≥18；依赖仅 `ws`、`@modelcontextprotocol/sdk`、`zod`。
+- 状态气泡的 connected 以收到服务端 `welcome` 为准（而非 WS onopen），token 错误被拒时不会短暂误绿；气泡用 Shadow DOM + CSSOM 内联样式实现，页面 CSS 无法侵入，禁内联 style 的严格 CSP 下也能显示。
+- 双击气泡的操作记录：服务端对本页只有 eval 一个指令通道（click/type/get_text 等都生成 JS 走 eval），收到即记录、`eval-result` 回包按 reqId 回填 ok/耗时。存 sessionStorage（key `__web_bridge_op_log__`，上限：最近 5 次加载 × 每次 100 条 × 单条代码截断 2000 字符）；脚本初始化 push 新分组后**立即落盘**，否则无操作的加载刷新后不会留下分组。双击用 pointerdown 手动判定（350ms 内两次按下），不依赖 click 兼容事件；对话框与气泡同套 Shadow DOM + CSSOM 隔离。
 
 ## 常用命令
 
@@ -78,3 +80,8 @@ npm test                 # Node e2e 全量
 npm run test:browser     # Playwright 真实浏览器 e2e
 npm run test-static      # 静态测试页服务（http-server，127.0.0.1:4321，根目录 static/）
 ```
+
+## 踩坑记录
+
+- 直调 HTTP `/mcp` 接口做验证时：POST 必须带 `Accept: application/json, text/event-stream` 头（缺了返回 406）；从浏览器页面内 fetch 还会叠加跨域问题，建议从 Node 侧直调。多页面连接时 `eval_js` 必须显式传 `pageId`（省略仅恰好单页时自动选中）——残留的旧测试标签页同样算已连接页面，会让无 pageId 调用报错。
+- 后台 `npm run test-static` 用 TaskStop 终止时，只杀了 npm 外壳，http-server 子进程可能存活并残留占用端口（下次启动 EADDRINUSE）；排查用 `lsof -nP -iTCP:<port> -sTCP:LISTEN`，确认是 http-server 后按 PID kill。

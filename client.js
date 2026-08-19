@@ -1,7 +1,8 @@
 /* web-bridge-mcp client.js — 在任意静态网页中引入，连接 web-bridge-mcp MCP Server
  * 用法：<script src="http://127.0.0.1:3210/client.js"></script>
  * （由 server 端下发时会在文件头注入 window.__WEB_BRIDGE__ 配置）
- * 零依赖；自动重连；捕获 console 与未捕获异常；执行 eval 请求并回传序列化结果
+ * 零依赖；自动重连；捕获 console 与未捕获异常；执行 eval 请求并回传序列化结果；
+ * 右上角注入可拖拽的连接状态气泡（绿=已连接 黄=连接中 红=已断开）
  */
 (function () {
   "use strict";
@@ -31,7 +32,8 @@
   var reconnectAttempt = 0;
 
   function connect() {
-    try { ws = new WebSocket(WS_URL); } catch (e) { scheduleReconnect(); return; }
+    setStatus("connecting");
+    try { ws = new WebSocket(WS_URL); } catch (e) { setStatus("disconnected"); scheduleReconnect(); return; }
     ws.onopen = function () {
       reconnectAttempt = 0;
       send({
@@ -43,9 +45,10 @@
     ws.onmessage = function (event) {
       var msg;
       try { msg = JSON.parse(event.data); } catch (e) { return; }
-      if (msg && msg.type === "eval") handleEval(msg);
+      if (msg && msg.type === "eval") { recordEval(msg); handleEval(msg); }
+      else if (msg && msg.type === "welcome") setStatus("connected"); // 服务端已接受本页，连接真正可用
     };
-    ws.onclose = function () { ws = null; scheduleReconnect(); };
+    ws.onclose = function () { ws = null; setStatus("disconnected"); scheduleReconnect(); };
     ws.onerror = function () { /* onclose 会跟着触发 */ };
   }
 
@@ -75,7 +78,7 @@
   window.addEventListener("load", reportPageInfo);
   window.addEventListener("popstate", reportPageInfo);
   window.addEventListener("hashchange", reportPageInfo);
-  setInterval(reportPageInfo, 5000); // SPA 的 pushState/replaceState 无统一事件，轮询兜底
+  setInterval(function () { reportPageInfo(); ensureBubble(); }, 5000); // SPA 的 pushState/replaceState 无统一事件，轮询兜底；顺带把被框架清掉的气泡挂回
 
   // ---------- console 捕获（透传原方法，节流批量上报） ----------
 
@@ -144,6 +147,7 @@
         error: e && e.stack ? String(e.stack) : String(e),
       };
     }
+    finishEvalRecord(msg.reqId, res.ok, res.durationMs);
     send(res);
   }
 
@@ -222,6 +226,299 @@
     } catch (e) {
       return "[无法序列化: " + (e && e.message) + "]";
     }
+  }
+
+  // ---------- 连接状态气泡（右上角可拖拽圆点：绿=已连接 黄=连接中 红=已断开） ----------
+
+  var BUBBLE_COLORS = { connecting: "#f59e0b", connected: "#22c55e", disconnected: "#ef4444" };
+  var BUBBLE_LABELS = { connecting: "连接中", connected: "已连接", disconnected: "已断开" };
+  var BUBBLE_POS_KEY = "__web_bridge_bubble_pos__";
+  var bubbleHost = null, bubbleDot = null, bubbleAnim = null, bubbleState = "disconnected";
+
+  function setStatus(state) {
+    bubbleState = state;
+    if (bubbleHost) bubbleHost.title = "web-bridge-mcp · " + BUBBLE_LABELS[state] + "（双击查看操作记录）";
+    if (bubbleDot) bubbleDot.style.background = BUBBLE_COLORS[state];
+    if (bubbleAnim) { bubbleAnim.cancel(); bubbleAnim = null; }
+    if (state === "connecting" && bubbleDot && bubbleDot.animate) {
+      bubbleAnim = bubbleDot.animate( // 呼吸动画：等待服务端确认期间闪烁提示
+        [{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }], { duration: 1200, iterations: Infinity }
+      );
+    }
+  }
+
+  function ensureBubble() {
+    if (!bubbleHost) {
+      if (document.body) createBubble();
+    } else if (!bubbleHost.isConnected && document.body) {
+      document.body.appendChild(bubbleHost); // SPA 重写 body 后把气泡挂回（append 幂等，监听不重复）
+    }
+    if (opDialogOpen && opDialogHost && !opDialogHost.isConnected && document.body) {
+      document.body.appendChild(opDialogHost); // 对话框开着时被清掉也一并挂回
+    }
+  }
+
+  function createBubble() {
+    bubbleHost = document.createElement("div");
+    var s = bubbleHost.style; // 样式全走 CSSOM：页面 CSS 无法侵入，严格 CSP（禁内联 style 标签/属性）下也生效
+    s.position = "fixed";
+    s.top = "16px";
+    s.right = "16px";
+    s.width = "20px";
+    s.height = "20px";
+    s.zIndex = "2147483647";
+    s.cursor = "grab";
+    s.userSelect = "none";
+    s.touchAction = "none";
+    var root = bubbleHost.attachShadow ? bubbleHost.attachShadow({ mode: "open" }) : bubbleHost;
+    bubbleDot = document.createElement("div");
+    var d = bubbleDot.style;
+    d.width = "100%";
+    d.height = "100%";
+    d.borderRadius = "50%";
+    d.background = BUBBLE_COLORS.disconnected;
+    d.border = "2px solid rgba(255,255,255,.9)";
+    d.boxShadow = "0 1px 4px rgba(0,0,0,.4)";
+    root.appendChild(bubbleDot);
+    initBubbleDrag();
+    restoreBubblePos();
+    document.body.appendChild(bubbleHost);
+    setStatus(bubbleState); // 补齐气泡创建前已发生的状态
+  }
+
+  function initBubbleDrag() {
+    var dragging = false, moved = false, startX = 0, startY = 0, origX = 0, origY = 0, lastDownTs = 0;
+    bubbleHost.addEventListener("pointerdown", function (e) {
+      var now = Date.now();
+      if (now - lastDownTs < 350) { // 手动判定双击（不依赖 click 兼容事件），打开操作记录
+        lastDownTs = 0;
+        openOpDialog();
+        return;
+      }
+      lastDownTs = now;
+      dragging = true; moved = false;
+      startX = e.clientX; startY = e.clientY;
+      var r = bubbleHost.getBoundingClientRect();
+      origX = r.left; origY = r.top;
+      bubbleHost.style.cursor = "grabbing";
+      try { bubbleHost.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      e.preventDefault();
+    });
+    bubbleHost.addEventListener("pointermove", function (e) {
+      if (!dragging) return;
+      var dx = e.clientX - startX, dy = e.clientY - startY;
+      if (!moved && Math.abs(dx) + Math.abs(dy) < 3) return; // 位移阈值：区分点击与拖拽
+      moved = true;
+      applyBubblePos(origX + dx, origY + dy);
+    });
+    function endDrag() {
+      if (!dragging) return;
+      dragging = false;
+      bubbleHost.style.cursor = "grab";
+      if (moved) { // 拖拽过后重置双击计时，避免"拖完快速点一下"误判为双击
+        lastDownTs = 0;
+        try {
+          var r = bubbleHost.getBoundingClientRect();
+          sessionStorage.setItem(BUBBLE_POS_KEY, Math.round(r.left) + "," + Math.round(r.top));
+        } catch (e) { /* ignore */ }
+      }
+    }
+    bubbleHost.addEventListener("pointerup", endDrag);
+    bubbleHost.addEventListener("pointercancel", endDrag);
+  }
+
+  function applyBubblePos(x, y) {
+    var w = bubbleHost.offsetWidth || 20, h = bubbleHost.offsetHeight || 20;
+    x = Math.min(Math.max(x, 4), window.innerWidth - w - 4); // clamp 在视口内，留 4px 边距
+    y = Math.min(Math.max(y, 4), window.innerHeight - h - 4);
+    var s = bubbleHost.style;
+    s.right = "auto";
+    s.left = x + "px";
+    s.top = y + "px";
+  }
+
+  function restoreBubblePos() {
+    try {
+      var saved = sessionStorage.getItem(BUBBLE_POS_KEY);
+      if (!saved) return;
+      var p = saved.split(",");
+      applyBubblePos(Number(p[0]), Number(p[1]));
+    } catch (e) { /* ignore */ }
+  }
+
+  // ---------- MCP 操作记录（双击气泡查看；sessionStorage 持久化，按页面加载分组隔开） ----------
+  // 服务端对本页的指令只有 eval 一个通道（click/type/get_text 等在 wire 层都是生成 JS 走 eval），
+  // 因此记录 eval 即等于记录 MCP 做过的全部操作。
+
+  var OP_LOG_KEY = "__web_bridge_op_log__";
+  var OP_SESSIONS_MAX = 5;   // 最多保留最近几次页面加载
+  var OP_ENTRIES_MAX = 100;  // 每次加载最多记录条数（超出丢最旧）
+  var OP_CODE_MAX = 2000;    // 单条代码的存储截断长度
+
+  var opLog = { sessions: [] };
+  try {
+    var opStored = sessionStorage.getItem(OP_LOG_KEY);
+    if (opStored) {
+      var opParsed = JSON.parse(opStored);
+      if (opParsed && Array.isArray(opParsed.sessions)) opLog = opParsed;
+    }
+  } catch (e) { /* 数据损坏时从空日志重新开始 */ }
+  opLog.sessions.push({ startedAt: Date.now(), entries: [] }); // 本次加载即新分组：刷新后旧记录隔到上一组
+  if (opLog.sessions.length > OP_SESSIONS_MAX) opLog.sessions.splice(0, opLog.sessions.length - OP_SESSIONS_MAX);
+  var opSession = opLog.sessions[opLog.sessions.length - 1];
+  saveOpLog(); // 初始化即落盘，否则首次加载到刷新之间没有任何记录时，分组不会写入 storage
+
+  function saveOpLog() {
+    try { sessionStorage.setItem(OP_LOG_KEY, JSON.stringify(opLog)); } catch (e) { /* 写满/被禁时退化为内存记录 */ }
+  }
+
+  function recordEval(msg) {
+    opSession.entries.push({
+      ts: Date.now(), reqId: msg.reqId,
+      code: typeof msg.code === "string" ? msg.code.slice(0, OP_CODE_MAX) : String(msg.code),
+      ok: null, durationMs: null, // null = 执行中，eval-result 回包后回填
+    });
+    if (opSession.entries.length > OP_ENTRIES_MAX) opSession.entries.splice(0, opSession.entries.length - OP_ENTRIES_MAX);
+    saveOpLog();
+    if (opDialogOpen) renderOpDialog(); // 对话框开着时实时刷新
+  }
+
+  function finishEvalRecord(reqId, ok, durationMs) {
+    for (var i = opSession.entries.length - 1; i >= 0; i--) {
+      if (opSession.entries[i].reqId === reqId) {
+        opSession.entries[i].ok = ok;
+        opSession.entries[i].durationMs = durationMs;
+        break;
+      }
+    }
+    saveOpLog();
+    if (opDialogOpen) renderOpDialog();
+  }
+
+  // ---------- 操作记录对话框（独立 Shadow DOM 宿主，样式全走 CSSOM，与气泡同套隔离方案） ----------
+
+  var opDialogHost = null, opDialogOpen = false, opDialogBody = null;
+
+  function css(el, styles) {
+    for (var k in styles) el.style[k] = styles[k];
+    return el;
+  }
+
+  function openOpDialog() {
+    if (opDialogOpen) { // 已开着但被 SPA 清掉 body 时重新挂回
+      if (opDialogHost && !opDialogHost.isConnected && document.body) document.body.appendChild(opDialogHost);
+      return;
+    }
+    opDialogOpen = true;
+    if (!opDialogHost) buildOpDialog();
+    document.body.appendChild(opDialogHost);
+    document.addEventListener("keydown", opDialogEsc);
+    renderOpDialog();
+  }
+
+  function opDialogEsc(e) { if (e.key === "Escape") closeOpDialog(); }
+
+  function closeOpDialog() {
+    if (!opDialogOpen) return;
+    opDialogOpen = false;
+    document.removeEventListener("keydown", opDialogEsc);
+    if (opDialogHost && opDialogHost.parentNode) opDialogHost.parentNode.removeChild(opDialogHost);
+  }
+
+  function buildOpDialog() {
+    opDialogHost = document.createElement("div");
+    css(opDialogHost, {
+      position: "fixed", top: "0", left: "0", right: "0", bottom: "0",
+      zIndex: "2147483647",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: "rgba(0,0,0,.45)",
+      fontFamily: "system-ui, -apple-system, sans-serif",
+    });
+    var root = opDialogHost.attachShadow ? opDialogHost.attachShadow({ mode: "open" }) : opDialogHost;
+    var panel = document.createElement("div");
+    css(panel, {
+      background: "#fff", borderRadius: "10px", boxShadow: "0 8px 32px rgba(0,0,0,.3)",
+      width: "560px", maxWidth: "calc(100vw - 32px)", maxHeight: "70vh",
+      display: "flex", flexDirection: "column", overflow: "hidden",
+    });
+    var bar = document.createElement("div");
+    css(bar, { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid #e5e7eb" });
+    var title = document.createElement("strong");
+    title.textContent = "MCP 对本页的操作记录";
+    css(title, { fontSize: "14px" });
+    var closeBtn = document.createElement("button");
+    closeBtn.textContent = "✕";
+    css(closeBtn, { border: "none", background: "none", fontSize: "16px", cursor: "pointer", color: "#666", padding: "2px 6px", lineHeight: "1" });
+    closeBtn.addEventListener("click", closeOpDialog);
+    bar.appendChild(title); bar.appendChild(closeBtn);
+    opDialogBody = document.createElement("div");
+    css(opDialogBody, { padding: "4px 16px 16px", overflowY: "auto", fontSize: "13px", color: "#111" });
+    panel.appendChild(bar); panel.appendChild(opDialogBody);
+    root.appendChild(panel);
+    opDialogHost.addEventListener("click", function (e) { if (e.target === opDialogHost) closeOpDialog(); }); // 点遮罩空白处关闭
+  }
+
+  function fmtTime(ts) {
+    var d = new Date(ts);
+    var p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+
+  function renderOpDialog() {
+    if (!opDialogBody) return;
+    opDialogBody.textContent = "";
+    for (var s = opLog.sessions.length - 1; s >= 0; s--) { // 最新一次加载排最上
+      var session = opLog.sessions[s];
+      var head = document.createElement("div");
+      head.textContent = (session === opSession ? "── 本次加载 " : "── 上次加载 ") + fmtTime(session.startedAt) + " ──";
+      css(head, { margin: "10px 0 6px", fontWeight: "600", color: "#6b7280", fontSize: "12px", borderTop: "1px solid #e5e7eb", paddingTop: "8px" });
+      opDialogBody.appendChild(head);
+      if (!session.entries.length) {
+        var none = document.createElement("div");
+        none.textContent = "（无操作）";
+        css(none, { color: "#9ca3af", fontSize: "12px", padding: "2px 0 6px" });
+        opDialogBody.appendChild(none);
+        continue;
+      }
+      for (var i = 0; i < session.entries.length; i++) opDialogBody.appendChild(renderOpEntry(session.entries[i]));
+    }
+  }
+
+  function renderOpEntry(entry) {
+    var item = document.createElement("div");
+    css(item, { marginBottom: "10px" });
+    var line = document.createElement("div");
+    css(line, { display: "flex", alignItems: "center", fontSize: "12px", gap: "8px" });
+    var time = document.createElement("span");
+    time.textContent = fmtTime(entry.ts);
+    css(time, { color: "#6b7280" });
+    var badge = document.createElement("span");
+    if (entry.ok === true) {
+      badge.textContent = "✓ " + (entry.durationMs != null ? entry.durationMs + "ms" : "");
+      css(badge, { color: "#16a34a", fontWeight: "600" });
+    } else if (entry.ok === false) {
+      badge.textContent = "✗ " + (entry.durationMs != null ? entry.durationMs + "ms" : "");
+      css(badge, { color: "#dc2626", fontWeight: "600" });
+    } else {
+      badge.textContent = "执行中…";
+      css(badge, { color: "#9ca3af" });
+    }
+    line.appendChild(time); line.appendChild(badge);
+    var pre = document.createElement("pre");
+    pre.textContent = entry.code; // textContent 填充，杜绝代码注入
+    css(pre, {
+      margin: "4px 0 0", padding: "8px", background: "#f5f5f5", borderRadius: "6px",
+      fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: "12px", lineHeight: "1.5",
+      whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: "140px", overflowY: "auto",
+    });
+    item.appendChild(line); item.appendChild(pre);
+    return item;
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", ensureBubble);
+  } else {
+    ensureBubble();
   }
 
   connect();

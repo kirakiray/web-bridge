@@ -96,6 +96,8 @@ When deployed on a server, point the script at it (with token if enabled):
 Tell the AI: "Use web-bridge-mcp's list_pages to see which pages are connected, then eval_js to click #btn and read the console". If it lists your page, all three steps are wired up.
 
 > Order doesn't matter: the page can be opened before the server — client.js auto-reconnects (1s→2s→5s→10s backoff) and attaches as soon as the server is up. Hub status page: http://127.0.0.1:3210/
+>
+> Once embedded, the page shows a small draggable status bubble in the top-right corner (green = connected, yellow = connecting, red = disconnected), so you can always tell the page is bridged to the MCP server and whether the link is alive. Double-click the bubble to see exactly what the MCP server has done to the page — every eval command with its success/failure and duration, grouped per page load.
 
 ## Alternative: local stdio mode (the editor starts the server)
 

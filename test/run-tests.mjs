@@ -207,7 +207,7 @@ async function main() {
   const r6a = await mcp.callTool("get_console", { since: Date.now() });
   check("get_console since 过滤旧日志", !r6a.isError && r6a.text.includes("new-entry") && !r6a.text.includes("old-entry"), r6a.text);
   check("get_console 返回最新 ts 供链式增量", /最新 ts: \d+/.test(r6a.text), r6a.text);
-  const r6b = await mcp.callTool("get_console", { since: sinceTs });
+  const r6b = await mcp.callTool("get_console", { since: sinceTs - 1 }); // ts 严格大于 since 才保留
   check("get_console since 保留窗口内日志", !r6b.isError && r6b.text.includes("old-entry") && r6b.text.includes("new-entry"), r6b.text);
 
   console.log("— 高层操作预设（DOM shim） —");

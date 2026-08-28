@@ -24,19 +24,21 @@ AI 编辑器(MCP客户端) ←stdio 或 HTTP→ [server.js 中转进程] ←WebS
 | `client.js` | 浏览器端零依赖脚本（IIFE）。WS 连接+自动重连(1s→2s→5s→10s)、pageId 存 sessionStorage、捕获 console/未捕获异常(500ms 节流批量上报)、执行 eval 并安全序列化结果回传、右上角可拖拽连接状态气泡（绿=已连接/黄=连接中/红=已断开，位置记忆到 sessionStorage，SPA 清 body 后自动挂回）、双击气泡弹出「MCP 对本页的操作记录」对话框（每条操作的自然语言说明（AI 经 note 参数提供）+ 代码 + 成功/失败 + 耗时，sessionStorage 按页面加载分组，刷新隔开）。server 下发时会在文件头注入 `window.__WEB_BRIDGE__ = {wsUrl, token}` 配置。eval 预置快捷函数：`$`/`$$`（普通查询）、`$deep`/`$$deep`（递归穿入所有已打开 shadowRoot 的深度查询）、`$import`（以页面 URL 为 base 的动态 import——eval 经 `new Function` 跨域注入，裸写 `import('/x.js')` 的 base 不是页面地址） |
 | `lib/registry.mjs` | **核心共用模块**：页面注册表（hello 校验/重复 pageId 顶替）、console 环形缓冲(每页 500 条，断连保留)、eval 路由与超时(默认 30s 上限 120s)、eval 调用历史(环形 200 条，管理后台审计用)。单实例与分组模式共用 |
 | `lib/hub.mjs` | 单实例模式的 HTTP+WS 宿主：`/client.js` 下发(注入 wsUrl，支持 CORS 与 Chrome Local Network Access 预检)、`/` 状态页、`/mcp` 转发、WS upgrade、30s 心跳清死连接、按 `X-Forwarded-*` 推断对外 wss 地址（反代 TLS 终止场景） |
-| `lib/mcp.mjs` | MCP 工具层。`createMcpServer(hub)` 注册 6 个工具（stdio/http 两模式共用）；`registerTools(hub)` 为 stdio 模式接 StdioServerTransport。hub 需要 `introScript` 字段（分组模式提供分组专属脚本地址） |
+| `lib/mcp.mjs` | MCP 工具层。`createMcpServer(hub)` 注册 7 个工具（stdio/http 两模式共用；`get_guide` 每次调用现读 SKILL.md，指南更新即时生效）；`registerTools(hub)` 为 stdio 模式接 StdioServerTransport。hub 需要 `introScript` 字段（分组模式提供分组专属脚本地址） |
 | `lib/mcp-http.mjs` | MCP Streamable HTTP 传输（stateless，`enableJsonResponse`）。token 鉴权支持三种：`Authorization: Bearer`、`X-Web-Bridge-MCP-Token` 头、`?token=` 查询参数；CORS 全开 |
-| `lib/group-server.mjs` | 分组模式（`--transport http --admin <密码>`）：一个进程托管多组互相隔离的 registry。路由：`/admin`(管理后台)、`/admin/api/*`(wb_session cookie 会话鉴权)、`/g/<token>/{client.js,mcp,ws}`(分组专属入口，token 在路径中即鉴权)。分组持久化到 `data/groups.json`（含 token，已 gitignore） |
-| `lib/admin/` | 管理后台前端（index.html + admin.css + admin.js，无框架无构建，启动时读入内存缓存；admin.js 内置 zh-CN/en/ja 三语言 i18n） |
+| `lib/group-server.mjs` | 分组模式（`--transport http --admin <密码>`）：一个进程托管多组互相隔离的 registry。路由：`/admin`(管理后台)、`/admin/api/*`(wb_session cookie 会话鉴权)、`/g/<token>/{client.js,mcp,ws}`(分组专属入口，token 在路径中即鉴权)。分组持久化到 `data/groups.json`（含 token，已 gitignore）。加载后台静态资源时把 index.html 里的 `__VERSION__` 占位符替换为 package.json 版本号 |
+| `lib/admin/` | 管理后台前端（index.html + admin.css + admin.js，无框架无构建，启动时读入内存缓存；admin.js 内置 zh-CN/en/ja 三语言 i18n）。登录页与顶栏品牌处显示版本号（index.html 的 `__VERSION__` 占位符由 group-server 注入） |
+| `lib/version.mjs` | 唯一版本来源：读 package.json 的 version，导出 `VERSION`。`lib/mcp.mjs`（MCP serverInfo）与 `lib/group-server.mjs`（后台版本注入）共用 |
 | `test/run-tests.mjs` | Node e2e（`npm test`）：自实现极简 MCP stdio 客户端 + FakePage 模拟页面 + DOM shim，覆盖 5 个实例场景（默认/令牌/HTTP 传输/HTTP+令牌/分组模式） |
 | `test/browser.spec.mjs` + `playwright.config.mjs` | Playwright 真实浏览器 e2e（`npm run test:browser`，需先 `npx playwright install chromium`）：真实 Chromium 加载 `test/test-page.html`，经真实 WS 验证 6 个工具 + 分组模式全流程。两个独立实例用专用端口 3399/3398，避免与 3210 冲突；workers=1 串行 |
 | `static/` | 手动测试静态页（`npm run test-static` 用 http-server 起在 127.0.0.1:4321，`-c-1` 禁缓存）：`test-a.html` 交互验证（click/type/计数）、`test-b.html` 控制台与文本验证（多级别日志/未捕获异常/get_text）。均引入 `http://127.0.0.1:3210/client.js`，两页同开可验证 `list_pages` 多页选择 |
 | `mcp.json` | 编辑器配置模板（http/stdio/远程三种示例） |
-| `.agents/skills/web-bridge-mcp/SKILL.md` | 面向 AI 的使用 skill：6 个 MCP 工具的参数、标准工作流（list_pages → 操作 → get_console 验证）、eval_js 写法、note 参数、常见报错排查 |
+| `.agents/skills/web-bridge-mcp/SKILL.md` | 面向 AI 的使用 skill：frontmatter 带 `version` 字段（与 package.json 同步）；7 个 MCP 工具的参数（`get_guide` 工具每次现读本文件下发，所以 skill 更新对所有 MCP 客户端即时可见，装不装 skill 都能拿到）、标准工作流（list_pages → 操作 → get_console 验证）、eval_js 写法、note 参数、常见报错排查 |
+| `scripts/bump.mjs` | 升版脚本（`npm run bump [major\|minor\|patch\|x.y.z]`，默认 patch）：同步更新 package.json 与 SKILL.md frontmatter 的 version |
 
-## 6 个 MCP 工具（lib/mcp.mjs）
+## 7 个 MCP 工具（lib/mcp.mjs）
 
-`list_pages`（列页面）、`eval_js`（执行任意 JS，支持 await/多语句，最后一句表达式自动 return，预置 `$`/`$$`/`$deep`/`$$deep`/`$import`）、`get_console`（读日志，支持 `since` 增量拉取）、`click`、`type`、`get_text`（后三个都是生成 JS 代码走 eval 通道的预设，超时 10s）。执行类工具（eval_js/click/type/get_text）均有可选 `note` 参数：AI 填写的自然语言操作说明，随 eval 消息下发给页面（页面气泡操作记录里加粗显示）；预设漏填时服务端回退为 `click #btn` 这类短标签。
+`get_guide`（返回 SKILL.md 全文——完整使用指南与踩坑经验；每次调用现读文件、更新即时生效，AI 首次使用前可先调用）、`list_pages`（列页面）、`eval_js`（执行任意 JS，支持 await/多语句，最后一句表达式自动 return，预置 `$`/`$$`/`$deep`/`$$deep`/`$import`）、`get_console`（读日志，支持 `since` 增量拉取）、`click`、`type`、`get_text`（后三个都是生成 JS 代码走 eval 通道的预设，超时 10s）。执行类工具（eval_js/click/type/get_text）均有可选 `note` 参数：AI 填写的自然语言操作说明，随 eval 消息下发给页面（页面气泡操作记录里加粗显示）；预设漏填时服务端回退为 `click #btn` 这类短标签。
 
 **pageId 规则**：省略且恰好单页时自动选中；0 页或多页时报错并附页面清单引导 AI 重试。pageId 必须完整输出（AI 要原样回传）。
 

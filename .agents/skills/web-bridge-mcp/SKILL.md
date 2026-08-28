@@ -1,16 +1,20 @@
 ---
 name: "web-bridge-mcp"
+version: "1.0.2"
 description: "Guide to web-bridge-mcp MCP tools (list_pages, eval_js, get_console, click, type, get_text). Invoke when running JS in, reading console of, or clicking/typing on web pages that include client.js — i.e. whenever testing, debugging, inspecting or operating the connected browser pages."
 ---
 
 # web-bridge-mcp 使用指南
 
-web-bridge-mcp 是一个 MCP 中转服务（服务器已部署）。目标网页只要引入了它的 `client.js`（当前已有页面接入），AI 就能通过以下 6 个 MCP 工具在**用户真实浏览器页面**里执行 JS、读控制台、模拟点击/输入。页面右上角有连接状态气泡：绿 = 已连接。
+web-bridge-mcp 是一个 MCP 中转服务（服务器已部署）。目标网页只要引入了它的 `client.js`（当前已有页面接入），AI 就能通过以下 7 个 MCP 工具在**用户真实浏览器页面**里执行 JS、读控制台、模拟点击/输入。页面右上角有连接状态气泡：绿 = 已连接。
+
+> 本文件同时是 `get_guide` MCP 工具的下发内容（server 每次调用现读本文件），所以更新这里的经验后，任何 MCP 客户端无需安装 skill、无需重启 server 都能即时读到最新版。
 
 ## 工具总览
 
 | 工具 | 作用 | 关键参数 |
 | --- | --- | --- |
+| `get_guide` | 返回本指南全文（现读文件，更新即时生效） | 无 |
 | `list_pages` | 列出所有已连接页面（pageId / 标题 / URL / 连接时间） | 无 |
 | `eval_js` | 在页面执行任意 JS 并返回序列化结果 | `code`（必填）、`pageId`、`timeoutMs`（默认 30000，上限 120000）、`note` |
 | `get_console` | 读页面最近的 console 输出与未捕获异常 | `pageId`、`limit`（默认 50，上限 500）、`since`（毫秒时间戳，只返回该时间之后的日志，增量拉取） |

@@ -82,6 +82,49 @@ test.describe.serial("web-bridge-mcp 真实浏览器链路", () => {
     expect(err.text).toContain("boom");
   });
 
+  test("eval_js 语句块自动 return / $deep 穿 shadow / $import 以页面为 base", async ({ browser }) => {
+    // 页面里造一个 shadow DOM 宿主，供 $deep 验证
+    await openPage(browser, {
+      html: `<!doctype html><html><head><title>深度查询页</title></head><body>
+        <div id="host"></div>
+        <script>
+          document.getElementById("host").attachShadow({ mode: "open" })
+            .innerHTML = '<button id="deep-btn">藏在 shadow 里</button>';
+        </script>
+      </body></html>`,
+      title: "深度查询页",
+    });
+    // 多语句代码的最后一句表达式被自动 return（无需显式 return）
+    expect((await callTool("eval_js", { code: "let x = 1;\n" +
+      "// 注释行不算表达式\n" +
+      "x + 41" })).text).toContain("42");
+    // 语句块以 return/声明结尾时不误加 return，也不报错
+    expect((await callTool("eval_js", { code: "let y = 2;\nreturn y * 21;" })).text).toContain("42");
+    // $$ 查不到 shadow 里的元素，$deep / $$deep 能查到
+    expect((await callTool("eval_js", { code: "$$('#deep-btn').length" })).text).toContain("0");
+    expect((await callTool("eval_js", { code: "$deep('#deep-btn').textContent" })).text).toContain("藏在 shadow 里");
+    expect((await callTool("eval_js", { code: "$$deep('#deep-btn').length" })).text).toContain("1");
+    // $import 的 base 是页面地址而非跨域注入脚本：不存在模块报「找不到」，而非 base 解析失败
+    const imp = await callTool("eval_js", { code: "await $import('/no-such-module.js').then(() => 'ok', e => e.message)" });
+    expect(imp.text).not.toContain("Failed to resolve module specifier");
+  });
+
+  test("get_console since 增量拉取", async ({ browser }) => {
+    await openPage(browser);
+    await callTool("eval_js", { code: "console.log('before-since-entry')" });
+    await expect.poll(async () => (await callTool("get_console", { limit: 500 })).text, {
+      timeout: 5_000,
+    }).toContain("before-since-entry"); // console 上报有 500ms 节流
+    const full = await callTool("get_console", { limit: 500 });
+    const tsMatch = full.text.match(/最新 ts: (\d+)/);
+    expect(tsMatch).toBeTruthy();
+    const since = Number(tsMatch[1]);
+    await callTool("eval_js", { code: "console.log('after-since-entry')" });
+    await expect.poll(async () => (await callTool("get_console", { since, limit: 500 })).text, {
+      timeout: 5_000,
+    }).toContain("after-since-entry");
+  });
+
   test("click 触发真实 DOM 事件，get_console 读到页面日志", async ({ browser }) => {
     const { page } = await openPage(browser);
     const r1 = await callTool("click", { selector: "#btn" });

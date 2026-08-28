@@ -1,0 +1,44 @@
+# CI — push / PR 到 main 时自动跑两套测试：
+#   1) node --test（Node e2e，无需浏览器）
+#   2) Playwright 真实浏览器 e2e（headless Chromium）
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Node e2e
+        run: npm test
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser e2e (Playwright)
+        run: npm run test:browser
+
+      - name: 上传测试产物（失败时）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-node${{ matrix.node-version }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7

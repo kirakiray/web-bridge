@@ -31,6 +31,7 @@ AI 编辑器(MCP客户端) ←stdio 或 HTTP→ [server.js 中转进程] ←WebS
 | `lib/version.mjs` | 唯一版本来源：读 package.json 的 version，导出 `VERSION`。`lib/mcp.mjs`（MCP serverInfo）与 `lib/group-server.mjs`（后台版本注入）共用 |
 | `test/run-tests.mjs` | Node e2e（`npm test`）：自实现极简 MCP stdio 客户端 + FakePage 模拟页面 + DOM shim，覆盖 5 个实例场景（默认/令牌/HTTP 传输/HTTP+令牌/分组模式） |
 | `test/browser.spec.mjs` + `playwright.config.mjs` | Playwright 真实浏览器 e2e（`npm run test:browser`，需先 `npx playwright install chromium`）：真实 Chromium 加载 `test/test-page.html`，经真实 WS 验证 6 个工具 + 分组模式全流程。两个独立实例用专用端口 3399/3398，避免与 3210 冲突；workers=1 串行 |
+| `.github/workflows/ci.yml` | GitHub Actions CI：push / PR 到 main 时，Node 20 与 22 两个版本各跑一遍 `npm test`（Node e2e）+ `npm run test:browser`（Playwright，`npx playwright install --with-deps chromium` 装浏览器），失败时上传 test-results 产物 |
 | `static/` | 手动测试静态页（`npm run test-static` 用 http-server 起在 127.0.0.1:4321，`-c-1` 禁缓存）：`test-a.html` 交互验证（click/type/计数）、`test-b.html` 控制台与文本验证（多级别日志/未捕获异常/get_text）。均引入 `http://127.0.0.1:3210/client.js`，两页同开可验证 `list_pages` 多页选择 |
 | `mcp.json` | 编辑器配置模板（http/stdio/远程三种示例） |
 | `.agents/skills/web-bridge-mcp/SKILL.md` | 面向 AI 的使用 skill：frontmatter 带 `version` 字段（与 package.json 同步）；7 个 MCP 工具的参数（`get_guide` 工具每次现读本文件下发，所以 skill 更新对所有 MCP 客户端即时可见，装不装 skill 都能拿到）、标准工作流（list_pages → 操作 → get_console 验证）、eval_js 写法、note 参数、常见报错排查 |

@@ -21,7 +21,7 @@ AI 编辑器(MCP客户端) ←stdio 或 HTTP→ [server.js 中转进程] ←WebS
 | 文件 | 职责 |
 | --- | --- |
 | `server.js` | 入口。解析 `--port/--host/--token/--transport/--admin/--data`（或环境变量 PORT/HOST/TOKEN/TRANSPORT/ADMIN_PASSWORD）；有 `--admin` 走分组模式，否则单实例模式；stdio 模式下监听 stdin 关闭退出 |
-| `client.js` | 浏览器端零依赖脚本（IIFE）。WS 连接+自动重连(1s→2s→5s→10s)、pageId 存 sessionStorage、捕获 console/未捕获异常(500ms 节流批量上报)、执行 eval 并安全序列化结果回传、右上角可拖拽连接状态气泡（绿=已连接/黄=连接中/红=已断开，位置记忆到 sessionStorage，SPA 清 body 后自动挂回）、双击气泡弹出「MCP 对本页的操作记录」对话框（每条操作的自然语言说明（AI 经 note 参数提供）+ 代码 + 成功/失败 + 耗时，sessionStorage 按页面加载分组，刷新隔开）。server 下发时会在文件头注入 `window.__WEB_BRIDGE__ = {wsUrl, token}` 配置 |
+| `client.js` | 浏览器端零依赖脚本（IIFE）。WS 连接+自动重连(1s→2s→5s→10s)、pageId 存 sessionStorage、捕获 console/未捕获异常(500ms 节流批量上报)、执行 eval 并安全序列化结果回传、右上角可拖拽连接状态气泡（绿=已连接/黄=连接中/红=已断开，位置记忆到 sessionStorage，SPA 清 body 后自动挂回）、双击气泡弹出「MCP 对本页的操作记录」对话框（每条操作的自然语言说明（AI 经 note 参数提供）+ 代码 + 成功/失败 + 耗时，sessionStorage 按页面加载分组，刷新隔开）。server 下发时会在文件头注入 `window.__WEB_BRIDGE__ = {wsUrl, token}` 配置。eval 预置快捷函数：`$`/`$$`（普通查询）、`$deep`/`$$deep`（递归穿入所有已打开 shadowRoot 的深度查询）、`$import`（以页面 URL 为 base 的动态 import——eval 经 `new Function` 跨域注入，裸写 `import('/x.js')` 的 base 不是页面地址） |
 | `lib/registry.mjs` | **核心共用模块**：页面注册表（hello 校验/重复 pageId 顶替）、console 环形缓冲(每页 500 条，断连保留)、eval 路由与超时(默认 30s 上限 120s)、eval 调用历史(环形 200 条，管理后台审计用)。单实例与分组模式共用 |
 | `lib/hub.mjs` | 单实例模式的 HTTP+WS 宿主：`/client.js` 下发(注入 wsUrl，支持 CORS 与 Chrome Local Network Access 预检)、`/` 状态页、`/mcp` 转发、WS upgrade、30s 心跳清死连接、按 `X-Forwarded-*` 推断对外 wss 地址（反代 TLS 终止场景） |
 | `lib/mcp.mjs` | MCP 工具层。`createMcpServer(hub)` 注册 6 个工具（stdio/http 两模式共用）；`registerTools(hub)` 为 stdio 模式接 StdioServerTransport。hub 需要 `introScript` 字段（分组模式提供分组专属脚本地址） |
@@ -36,7 +36,7 @@ AI 编辑器(MCP客户端) ←stdio 或 HTTP→ [server.js 中转进程] ←WebS
 
 ## 6 个 MCP 工具（lib/mcp.mjs）
 
-`list_pages`（列页面）、`eval_js`（执行任意 JS，支持 await/return，预置 `$`/`$$`）、`get_console`（读日志）、`click`、`type`、`get_text`（后三个都是生成 JS 代码走 eval 通道的预设，超时 10s）。执行类工具（eval_js/click/type/get_text）均有可选 `note` 参数：AI 填写的自然语言操作说明，随 eval 消息下发给页面（页面气泡操作记录里加粗显示）；预设漏填时服务端回退为 `click #btn` 这类短标签。
+`list_pages`（列页面）、`eval_js`（执行任意 JS，支持 await/多语句，最后一句表达式自动 return，预置 `$`/`$$`/`$deep`/`$$deep`/`$import`）、`get_console`（读日志，支持 `since` 增量拉取）、`click`、`type`、`get_text`（后三个都是生成 JS 代码走 eval 通道的预设，超时 10s）。执行类工具（eval_js/click/type/get_text）均有可选 `note` 参数：AI 填写的自然语言操作说明，随 eval 消息下发给页面（页面气泡操作记录里加粗显示）；预设漏填时服务端回退为 `click #btn` 这类短标签。
 
 **pageId 规则**：省略且恰好单页时自动选中；0 页或多页时报错并附页面清单引导 AI 重试。pageId 必须完整输出（AI 要原样回传）。
 
@@ -50,7 +50,7 @@ AI 编辑器(MCP客户端) ←stdio 或 HTTP→ [server.js 中转进程] ←WebS
 | page→server | `eval-result` | `reqId/ok/value?/error?/durationMs`；迟到的超时回包被忽略 |
 | server→page | `welcome` / `eval` / `error` | hello 应答 / 下发代码（可带 `note` 自然语言操作说明，页面用户可见）/ 错误（如无效 token） |
 
-eval 执行约定（client.js `compile`）：代码先按表达式包装 `async () => ( code )`，SyntaxError 则退回语句块 `async () => { code }`（可用 return）；结果经 `preview()` 安全序列化为字符串（Error→stack、DOM→outerHTML 摘录、循环引用标记、深度≤6、≤50k 字符）。
+eval 执行约定（client.js `compile`）：三级包装——先按表达式 `async () => ( code )`；失败则语句块 `async () => { code }`，且若最后一句是表达式语句（尾部行不以 return/if/for/const 等开头的保守正则判断）自动补 `return`（转换后编译不过则退回原始语句块）；结果经 `preview()` 安全序列化为字符串（Error→stack、DOM→outerHTML 摘录、循环引用标记、深度≤6、≤50k 字符）。`get_console` 的 `since`（毫秒时间戳）在 registry 侧过滤，返回只含该时间之后的日志。
 
 ## 三种运行模式
 
@@ -84,5 +84,8 @@ npm run test-static      # 静态测试页服务（http-server，127.0.0.1:4321�
 
 ## 踩坑记录
 
+- eval 里的动态 `import('/x.js')` 报 `Failed to resolve module specifier`：eval 代码经 `new Function` 在 client.js（由 127.0.0.1:3210 跨域注入）里编译，动态 import 的 base 不是页面地址而是 `about:blank`。已内置 `$import(path)`（内部 `import(new URL(s, location.href).href)`），代码里一律用它代替裸 `import`。
+- Web Components 页面（如 ofa.js / senti-ui 项目）元素全在嵌套 shadow root 里，`$`/`$$` 只查 light DOM 会「明明在页面上却查不到」。用 `$deep`/`$$deep` 递归穿入所有已打开的 shadowRoot 查询。
+- 语句块代码之前不会隐式返回最后一句表达式的值（返回 `undefined` 让 AI 误判执行失败）；现已改为最后一句是表达式语句时自动补 `return`（正则保守判断，转换编译失败退回原行为）。
 - 直调 HTTP `/mcp` 接口做验证时：POST 必须带 `Accept: application/json, text/event-stream` 头（缺了返回 406）；从浏览器页面内 fetch 还会叠加跨域问题，建议从 Node 侧直调。多页面连接时 `eval_js` 必须显式传 `pageId`（省略仅恰好单页时自动选中）——残留的旧测试标签页同样算已连接页面，会让无 pageId 调用报错。
 - 后台 `npm run test-static` 用 TaskStop 终止时，只杀了 npm 外壳，http-server 子进程可能存活并残留占用端口（下次启动 EADDRINUSE）；排查用 `lsof -nP -iTCP:<port> -sTCP:LISTEN`，确认是 http-server 后按 PID kill。

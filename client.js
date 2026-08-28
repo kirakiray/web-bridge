@@ -123,16 +123,43 @@
 
   // ---------- eval 执行 ----------
 
-  // 表达式/语句两种包装：先按表达式包，语法错误则退回语句块（可用 return）
+  // 表达式/语句两种包装：先按表达式包，语法错误则退回语句块（可用 return）。
+  // 语句块模式下若最后一句是表达式语句，自动补 return（AI 写多语句代码时无需记得显式 return）。
   var PROLOGUE = "const $ = (s, r) => (r || document).querySelector(s);\n" +
-    "const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));\n";
+    "const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));\n" +
+    // $deep / $$deep：递归穿入所有已打开的 shadowRoot 查询（Web Components 页面必需）；
+    // $import：动态 import 的 base 是注入脚本的跨域地址而非页面，必须显式以页面 URL 解析
+    "function __deepAll(root, out) {\n" +
+    "  out.push(root);\n" +
+    "  var els = root.querySelectorAll('*');\n" +
+    "  for (var i = 0; i < els.length; i++) if (els[i].shadowRoot) __deepAll(els[i].shadowRoot, out);\n" +
+    "  return out;\n" +
+    "}\n" +
+    "const $deep = (s, r) => { for (var root of __deepAll(r || document, [])) { var el = root.querySelector(s); if (el) return el; } return null; };\n" +
+    "const $$deep = (s, r) => { var out = []; for (var root of __deepAll(r || document, [])) out.push(...root.querySelectorAll(s)); return out; };\n" +
+    "const $import = (s) => import(new URL(s, location.href).href);\n";
+
+  var NO_AUTORETURN_RE = /^(return|if|for|while|switch|do|try|catch|finally|throw|break|continue|const|let|var|function|class|else|\/\/|\/\*|\*|\}|\)|;|await\s+(function|class))/;
 
   function compile(code) {
     try {
       return new Function('"use strict";\n' + PROLOGUE + "return (async () => (\n" + code + "\n))();");
-    } catch (e) {
-      return new Function('"use strict";\n' + PROLOGUE + "return (async () => {\n" + code + "\n})();");
+    } catch (e) { /* 不是单个表达式，走语句块 */ }
+    // 语句块 + 自动 return：把最后一句表达式语句补上 return（尾部跨行表达式/块语句时
+    // 转换结果编译不过，自然退回原始语句块包装）
+    var lines = code.split("\n");
+    for (var i = lines.length - 1; i >= 0; i--) {
+      var t = lines[i].trim();
+      if (t && t !== ";") {
+        if (NO_AUTORETURN_RE.test(t)) break; // 最后一句不是表达式语句，保持原样
+        var transformed = lines.slice(0, i).concat(["return " + t], lines.slice(i + 1)).join("\n");
+        try {
+          return new Function('"use strict";\n' + PROLOGUE + "return (async () => {\n" + transformed + "\n})();");
+        } catch (e2) { /* 转换不合法，退回 */ }
+        break;
+      }
     }
+    return new Function('"use strict";\n' + PROLOGUE + "return (async () => {\n" + code + "\n})();");
   }
 
   async function handleEval(msg) {

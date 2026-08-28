@@ -13,7 +13,7 @@ web-bridge-mcp 是一个 MCP 中转服务（服务器已部署）。目标网页
 | --- | --- | --- |
 | `list_pages` | 列出所有已连接页面（pageId / 标题 / URL / 连接时间） | 无 |
 | `eval_js` | 在页面执行任意 JS 并返回序列化结果 | `code`（必填）、`pageId`、`timeoutMs`（默认 30000，上限 120000）、`note` |
-| `get_console` | 读页面最近的 console 输出与未捕获异常 | `pageId`、`limit`（默认 50，上限 500） |
+| `get_console` | 读页面最近的 console 输出与未捕获异常 | `pageId`、`limit`（默认 50，上限 500）、`since`（毫秒时间戳，只返回该时间之后的日志，增量拉取） |
 | `click` | 按 CSS 选择器点击元素（先 scrollIntoView） | `selector`（必填）、`pageId`、`note` |
 | `type` | 向输入框写入文本并派发 input / change 事件（兼容 contenteditable） | `selector`、`text`（必填）、`pageId`、`note` |
 | `get_text` | 读元素 innerText，selector 省略时读整个 body | `selector`（可选，默认 body）、`pageId`、`note` |
@@ -29,9 +29,12 @@ web-bridge-mcp 是一个 MCP 中转服务（服务器已部署）。目标网页
 
 ## eval_js 写法要点
 
-- 代码先按表达式包装 `async () => ( code )`，最后一句是表达式则自动返回；有语法错误时退回语句块 `async () => { code }`，可用 `return`。
+- 支持多语句代码，最后一句若是表达式会被**自动 return**（写 `let a = 1; a + 2` 也能拿到 2），也可以显式 `return`。
 - 天然支持 `await`（如 `await fetch(...)`）。
-- 预置 `$` / `$$`（= `document.querySelector` / `querySelectorAll`）。
+- 预置快捷函数：
+  - `$` / `$$`：`querySelector` / `querySelectorAll`（只查 light DOM）
+  - `$deep` / `$$deep`：递归穿入所有已打开 shadowRoot 的深度查询。**Web Components 页面（ofa.js / senti-ui 等）元素在嵌套 shadow 里，一律用这两个**，`$`/`$$` 会查不到
+  - `$import`：以页面 URL 为 base 的动态 `import`。**不要在代码里裸写 `import('/x.js')`**——eval 的 base 不是页面地址，会报 `Failed to resolve module specifier`
 - 返回值会被安全序列化为字符串：Error → stack、DOM 节点 → outerHTML 摘录、嵌套深度 ≤ 6、总长 ≤ 50k 字符。
 - 工具返回格式：成功 `[ok] 42ms | 结果`；失败 `[error] 错误信息`（isError=true）。
 
@@ -41,12 +44,19 @@ web-bridge-mcp 是一个 MCP 中转服务（服务器已部署）。目标网页
 // 读取按钮状态
 $('#submit-btn').disabled
 
-// 查询所有列表项文本
-[...$$('.item')].map(el => el.textContent.trim())
+// 穿 shadow DOM 深度查询（组件库页面常用）
+$deep('st-button').textContent
+
+// 动态 import 页面内的模块
+const lv = await $import('/official-apps/cred-manager/lib/live-share.js')
 
 // 异步请求
 await fetch('/api/status').then(r => r.json())
 ```
+
+## get_console 增量拉取
+
+返回末尾带「最新 ts: <毫秒时间戳>」。需要区分「改代码前 vs 改代码后」的日志、或只看新产生的日志时：先读一次拿到 ts，之后每次调用把上次的 ts 传给 `since`，即只返回之后的日志。页面刷新会清空页面侧缓冲，断连后 server 侧缓冲仍保留。
 
 ## note 参数（建议始终填写）
 
@@ -65,4 +75,5 @@ await fetch('/api/status').then(r => r.json())
 ## 注意
 
 - 这是用户真实浏览器环境，不是无头浏览器：操作对用户可见（页面会滚动、气泡会记录）。不要执行破坏性操作（删除数据、跳转导致表单丢失等）。
+- 修改了被页面对应仓库的代码后，要让改动生效需 `eval_js` 执行 `location.reload()` 刷新页面（用户开着多个联动页面时每个都要刷新）再验证，否则会在旧代码上误判。
 - 不要试图通过本工具去操作未接入 client.js 的页面。

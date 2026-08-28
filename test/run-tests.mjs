@@ -199,6 +199,17 @@ async function main() {
   const r6 = await mcp.callTool("get_console", {});
   check("get_console 读到日志", !r6.isError && r6.text.includes("hello from fake page"), r6.text);
 
+  // since 增量拉取：带自定义 ts 的日志做 before/after 过滤
+  const sinceTs = Date.now() - 1000;
+  page.send({ type: "console", level: "log", text: "old-entry", ts: sinceTs });
+  page.send({ type: "console", level: "error", text: "new-entry", ts: Date.now() + 5000 });
+  await sleep(100);
+  const r6a = await mcp.callTool("get_console", { since: Date.now() });
+  check("get_console since 过滤旧日志", !r6a.isError && r6a.text.includes("new-entry") && !r6a.text.includes("old-entry"), r6a.text);
+  check("get_console 返回最新 ts 供链式增量", /最新 ts: \d+/.test(r6a.text), r6a.text);
+  const r6b = await mcp.callTool("get_console", { since: sinceTs });
+  check("get_console since 保留窗口内日志", !r6b.isError && r6b.text.includes("old-entry") && r6b.text.includes("new-entry"), r6b.text);
+
   console.log("— 高层操作预设（DOM shim） —");
   const el = installDomShim();
   const r7 = await mcp.callTool("click", { selector: "#btn" });

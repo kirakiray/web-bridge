@@ -1,6 +1,6 @@
 ---
 name: "web-bridge-mcp"
-version: "1.0.2"
+version: "1.0.3"
 description: "Guide to web-bridge-mcp MCP tools (list_pages, eval_js, get_console, click, type, get_text). Invoke when running JS in, reading console of, or clicking/typing on web pages that include client.js — i.e. whenever testing, debugging, inspecting or operating the connected browser pages."
 ---
 

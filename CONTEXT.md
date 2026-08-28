@@ -68,7 +68,7 @@ eval 执行约定（client.js `compile`）：三级包装——先按表达式 `
 - 反代场景：hub 与 group-server 各有一份相同的 `publicWsUrl()`，按 `X-Forwarded-Proto/Host` 生成正确的 ws/wss 地址注入 client.js。
 - 分组模式下各分组独立 registry（页面池/console/eval 历史互不可见），分组删除时 `registry.close()` 断开该组所有页面。
 - 管理后台登录失败延迟 300ms 拖慢暴力破解；会话仅存内存（重启失效），TTL 7 天。
-- npm 包 `files` 只发布 `server.js client.js lib/ mcp.json`；Node ≥18；依赖仅 `ws`、`@modelcontextprotocol/sdk`、`zod`。
+- npm 包 `files` 发布 `server.js client.js lib/ mcp.json .agents/skills/`（SKILL.md 随包发布，npx 安装也能用 `get_guide`）；Node ≥18；依赖仅 `ws`、`@modelcontextprotocol/sdk`、`zod`。
 - 状态气泡的 connected 以收到服务端 `welcome` 为准（而非 WS onopen），token 错误被拒时不会短暂误绿；气泡用 Shadow DOM + CSSOM 内联样式实现，页面 CSS 无法侵入，禁内联 style 的严格 CSP 下也能显示。
 - 双击气泡的操作记录：服务端对本页只有 eval 一个指令通道（click/type/get_text 等都生成 JS 走 eval），收到即记录、`eval-result` 回包按 reqId 回填 ok/耗时；eval 消息可带 `note`（AI 经工具 note 参数提供、mcp.mjs 预设漏填时回退 label），说明文字在对话框里作为加粗主行、代码降为次要小字。存 sessionStorage（key `__web_bridge_op_log__`，上限：最近 5 次加载 × 每次 100 条 × 单条代码截断 2000 字符）；脚本初始化 push 新分组后**立即落盘**，否则无操作的加载刷新后不会留下分组。双击用 pointerdown 手动判定（350ms 内两次按下），不依赖 click 兼容事件；对话框与气泡同套 Shadow DOM + CSSOM 隔离。
 

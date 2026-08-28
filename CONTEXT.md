@@ -32,6 +32,7 @@ AI 编辑器(MCP客户端) ←stdio 或 HTTP→ [server.js 中转进程] ←WebS
 | `test/browser.spec.mjs` + `playwright.config.mjs` | Playwright 真实浏览器 e2e（`npm run test:browser`，需先 `npx playwright install chromium`）：真实 Chromium 加载 `test/test-page.html`，经真实 WS 验证 6 个工具 + 分组模式全流程。两个独立实例用专用端口 3399/3398，避免与 3210 冲突；workers=1 串行 |
 | `static/` | 手动测试静态页（`npm run test-static` 用 http-server 起在 127.0.0.1:4321，`-c-1` 禁缓存）：`test-a.html` 交互验证（click/type/计数）、`test-b.html` 控制台与文本验证（多级别日志/未捕获异常/get_text）。均引入 `http://127.0.0.1:3210/client.js`，两页同开可验证 `list_pages` 多页选择 |
 | `mcp.json` | 编辑器配置模板（http/stdio/远程三种示例） |
+| `.agents/skills/web-bridge-mcp/SKILL.md` | 面向 AI 的使用 skill：6 个 MCP 工具的参数、标准工作流（list_pages → 操作 → get_console 验证）、eval_js 写法、note 参数、常见报错排查 |
 
 ## 6 个 MCP 工具（lib/mcp.mjs）
 

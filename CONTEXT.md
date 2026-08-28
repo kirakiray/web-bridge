@@ -27,8 +27,9 @@ AI 编辑器(MCP客户端) ←stdio 或 HTTP→ [server.js 中转进程] ←WebS
 | `lib/mcp.mjs` | MCP 工具层。`createMcpServer(hub)` 注册 7 个工具（stdio/http 两模式共用；`get_guide` 每次调用现读 SKILL.md，指南更新即时生效）；`registerTools(hub)` 为 stdio 模式接 StdioServerTransport。hub 需要 `introScript` 字段（分组模式提供分组专属脚本地址） |
 | `lib/mcp-http.mjs` | MCP Streamable HTTP 传输（stateless，`enableJsonResponse`）。token 鉴权支持三种：`Authorization: Bearer`、`X-Web-Bridge-MCP-Token` 头、`?token=` 查询参数；CORS 全开 |
 | `lib/group-server.mjs` | 分组模式（`--transport http --admin <密码>`）：一个进程托管多组互相隔离的 registry。路由：`/admin`(管理后台)、`/admin/api/*`(wb_session cookie 会话鉴权)、`/g/<token>/{client.js,mcp,ws}`(分组专属入口，token 在路径中即鉴权)。分组持久化到 `data/groups.json`（含 token，已 gitignore）。加载后台静态资源时把 index.html 里的 `__VERSION__` 占位符替换为 package.json 版本号 |
-| `lib/admin/` | 管理后台前端（index.html + admin.css + admin.js，无框架无构建，启动时读入内存缓存；admin.js 内置 zh-CN/en/ja 三语言 i18n）。登录页与顶栏品牌处显示版本号（index.html 的 `__VERSION__` 占位符由 group-server 注入） |
+| `lib/admin/` | 管理后台前端（index.html + admin.css + admin.js，无框架无构建，启动时读入内存缓存；admin.js 内置 zh-CN/en/ja 三语言 i18n）。登录页与顶栏品牌处显示版本号（index.html 的 `__VERSION__` 占位符由 group-server 注入）。分组详情的 MCP 配置片段，server 名随分组名走：`web-bridge-mcp-<分组名slug>`（小写、非文字/数字压成 `-`、中日文等文字与数字保留；slug 为空回退 `web-bridge-mcp`），多分组接入同一编辑器时可在 mcpServers 里区分 |
 | `lib/version.mjs` | 唯一版本来源：读 package.json 的 version，导出 `VERSION`。`lib/mcp.mjs`（MCP serverInfo）与 `lib/group-server.mjs`（后台版本注入）共用 |
+| `lib/name.mjs` | 分组 → MCP server 命名规则（唯一服务端实现）：`web-bridge-mcp-<分组名slug>`（小写、非文字/数字压成 `-`、中日文等文字与数字保留，slug 空回退 `web-bridge-mcp`）。分组模式下 serverInfo 自报名随此规则；`lib/admin/admin.js` 前端有一份等价实现用于配置片段，改规则两处同步 |
 | `test/run-tests.mjs` | Node e2e（`npm test`）：自实现极简 MCP stdio 客户端 + FakePage 模拟页面 + DOM shim，覆盖 5 个实例场景（默认/令牌/HTTP 传输/HTTP+令牌/分组模式） |
 | `test/browser.spec.mjs` + `playwright.config.mjs` | Playwright 真实浏览器 e2e（`npm run test:browser`，需先 `npx playwright install chromium`）：真实 Chromium 加载 `test/test-page.html`，经真实 WS 验证 6 个工具 + 分组模式全流程。两个独立实例用专用端口 3399/3398，避免与 3210 冲突；workers=1 串行 |
 | `.github/workflows/ci.yml` | GitHub Actions CI：push / PR 到 main 时，Node 20 与 22 两个版本各跑一遍 `npm test`（Node e2e）+ `npm run test:browser`（Playwright，`npx playwright install --with-deps chromium` 装浏览器），失败时上传 test-results 产物 |

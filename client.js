@@ -137,7 +137,34 @@
     "}\n" +
     "const $deep = (s, r) => { for (var root of __deepAll(r || document, [])) { var el = root.querySelector(s); if (el) return el; } return null; };\n" +
     "const $$deep = (s, r) => { var out = []; for (var root of __deepAll(r || document, [])) out.push(...root.querySelectorAll(s)); return out; };\n" +
-    "const $import = (s) => import(new URL(s, location.href).href);\n";
+    "const $import = (s) => import(new URL(s, location.href).href);\n" +
+    // $wait：轮询等待条件成立（函数或选择器字符串），AI 测 SPA 异步渲染时免手写轮询循环
+    "const $wait = async (cond, timeoutMs) => {\n" +
+    "  var t0 = Date.now();\n" +
+    "  for (;;) {\n" +
+    "    var v = typeof cond === 'string' ? ($deep(cond) || $(cond)) : await cond();\n" +
+    "    if (v) return v;\n" +
+    "    if (Date.now() - t0 > (timeoutMs || 10000)) throw new Error('$wait 超时（' + (timeoutMs || 10000) + 'ms）: ' + (typeof cond === 'string' ? cond : cond.toString().slice(0, 100)));\n" +
+    "    await new Promise(r => setTimeout(r, 100));\n" +
+    "  }\n" +
+    "};\n" +
+    // $frame：同源 iframe 内的查询辅助（跨域 iframe 的 contentDocument 访问会抛错，在此给出可读提示）
+    "function $frame(sel) {\n" +
+    "  var f = typeof sel === 'string' ? document.querySelector(sel) : sel;\n" +
+    "  var doc = null;\n" +
+    "  try { doc = f && (f.contentDocument || (f.contentWindow && f.contentWindow.document)); } catch (e) {}\n" +
+    "  if (!doc) throw new Error('$frame: 找不到可访问的 iframe（不存在或跨域）: ' + sel);\n" +
+    "  return {\n" +
+    "    iframe: f, document: doc, window: doc.defaultView,\n" +
+    "    $: (s, r) => (r || doc).querySelector(s),\n" +
+    "    $$: (s, r) => Array.from((r || doc).querySelectorAll(s)),\n" +
+    "    $deep: (s, r) => { for (var root of __deepAll(r || doc, [])) { var el = root.querySelector(s); if (el) return el; } return null; },\n" +
+    "    $$deep: (s, r) => { var out = []; for (var root of __deepAll(r || doc, [])) out.push(...root.querySelectorAll(s)); return out; },\n" +
+    "  };\n" +
+    "}\n" +
+    // $rect：元素几何 + 可见性一眼可读；$css：批量写样式的语法糖
+    "const $rect = (el) => { var r = el.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), visible: r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth }; };\n" +
+    "const $css = (el, styles) => { for (var k in styles) el.style[k] = styles[k]; return el; };\n";
 
   var NO_AUTORETURN_RE = /^(return|if|for|while|switch|do|try|catch|finally|throw|break|continue|const|let|var|function|class|else|\/\/|\/\*|\*|\}|\)|;|await\s+(function|class))/;
 
@@ -146,13 +173,26 @@
       return new Function('"use strict";\n' + PROLOGUE + "return (async () => (\n" + code + "\n))();");
     } catch (e) { /* 不是单个表达式，走语句块 */ }
     // 语句块 + 自动 return：把最后一句表达式语句补上 return（尾部跨行表达式/块语句时
-    // 转换结果编译不过，自然退回原始语句块包装）
+    // 转换结果编译不过，自然退回原始语句块包装）。
+    // 注意：同一行含多条语句时只能对最后一个 ';' 之后的语句补 return——
+    // 若对整行补 return，会变成 `return 第一句; 后续语句`，后续全部沦为死代码且编译仍通过。
     var lines = code.split("\n");
     for (var i = lines.length - 1; i >= 0; i--) {
       var t = lines[i].trim();
       if (t && t !== ";") {
         if (NO_AUTORETURN_RE.test(t)) break; // 最后一句不是表达式语句，保持原样
-        var transformed = lines.slice(0, i).concat(["return " + t], lines.slice(i + 1)).join("\n");
+        var before = lines.slice(0, i).join("\n");
+        var after = lines.slice(i + 1).join("\n");
+        var semi = t.lastIndexOf(";");
+        var transformed;
+        if (semi !== -1) {
+          // 多语句行：只 return 最后一个 ';' 之后的语句；补不出合法变换就放弃自动 return（宁可不返回值，不可吞语句）
+          var tail = t.slice(semi + 1).trim();
+          if (!tail || NO_AUTORETURN_RE.test(tail)) break;
+          transformed = before + "\n" + t.slice(0, semi + 1) + " return " + tail + "\n" + after;
+        } else {
+          transformed = before + "\nreturn " + t + "\n" + after;
+        }
         try {
           return new Function('"use strict";\n' + PROLOGUE + "return (async () => {\n" + transformed + "\n})();");
         } catch (e2) { /* 转换不合法，退回 */ }
@@ -167,7 +207,13 @@
     var res;
     try {
       var value = await compile(msg.code)();
-      res = { type: "eval-result", reqId: msg.reqId, ok: true, value: preview(value, 0, []), durationMs: Date.now() - started };
+      if (value && typeof value === "object" && value.__wbShot) {
+        // 截图专用通道：base64 PNG 不走 preview()（会被 50k 截断），单独字段原样回传
+        res = { type: "eval-result", reqId: msg.reqId, ok: true, durationMs: Date.now() - started,
+          value: "[真实截图] " + value.__wbShot.w + "x" + value.__wbShot.h + "（PNG base64 已附带）", shot: value.__wbShot };
+      } else {
+        res = { type: "eval-result", reqId: msg.reqId, ok: true, value: preview(value, 0, []), durationMs: Date.now() - started };
+      }
     } catch (e) {
       res = {
         type: "eval-result", reqId: msg.reqId, ok: false, durationMs: Date.now() - started,
@@ -177,6 +223,104 @@
     finishEvalRecord(msg.reqId, res.ok, res.durationMs);
     send(res);
   }
+
+  // ---------- get_dom_snapshot / get_screenshot 的页面端实现（供 server 预设生成 JS 调用） ----------
+
+  // 样式快照：递归子树，每个可见节点输出几何 + 关键 computed style + 文本。纯文本、无需授权，覆盖"长什么样"的绝大多数问题。
+  window.__wbSnapshot = function (root, opts) {
+    opts = opts || {};
+    var maxDepth = Math.min(Math.max(1, opts.depth || 4), 8);
+    var maxNodes = Math.min(Math.max(1, opts.maxNodes || 60), 300);
+    var lines = [];
+    var INTERESTING = ["position", "z-index", "background-color", "color", "font-size", "font-weight", "border", "border-radius", "box-shadow", "opacity", "overflow"];
+    function snap(node, depth, prefix) {
+      if (lines.length >= maxNodes || depth > maxDepth) return;
+      var r = node.getBoundingClientRect();
+      var cs = getComputedStyle(node);
+      if (cs.display === "none" || cs.visibility === "hidden" || (r.width === 0 && r.height === 0)) return;
+      var cls = typeof node.className === "string" && node.className.trim() ? "." + node.className.trim().split(/\s+/).join(".") : "";
+      var desc = prefix + "<" + node.tagName.toLowerCase() + (node.id ? "#" + node.id : "") + cls + ">";
+      var st = INTERESTING.map(function (k) {
+        var v = cs.getPropertyValue(k);
+        return v && v !== "none" && v !== "normal" && v !== "auto" && v !== "0px" && v !== "1" && v !== "rgba(0, 0, 0, 0)" ? k + "=" + v : null;
+      }).filter(Boolean).join(", ");
+      var txt = "";
+      if (!node.children.length) {
+        txt = (node.textContent || "").trim().replace(/\s+/g, " ").slice(0, 80);
+        if (txt) txt = " 文本:\"" + txt + "\"";
+      }
+      lines.push(desc + " rect=" + Math.round(r.x) + "," + Math.round(r.y) + " " + Math.round(r.width) + "x" + Math.round(r.height) + (st ? " | " + st : "") + txt);
+      ["::before", "::after"].forEach(function (p) {
+        var pcs = getComputedStyle(node, p);
+        if (pcs.content && pcs.content !== "none" && pcs.content !== "normal") lines.push(prefix + "  " + p + " content=" + pcs.content + " color=" + pcs.color);
+      });
+      var kids = [];
+      if (node.shadowRoot) { lines.push(prefix + "  #shadow-root"); kids = Array.from(node.shadowRoot.childNodes); }
+      else kids = Array.prototype.slice.call(node.childNodes);
+      kids.forEach(function (c) { if (c.nodeType === 1) snap(c, depth + 1, prefix + "  "); });
+    }
+    snap(root, 0, "");
+    var out = lines.join("\n");
+    if (lines.length >= maxNodes) out += "\n…[已达 maxNodes=" + maxNodes + " 上限，可调大 maxNodes 或减小 depth]";
+    return out || "（无可见的节点内容）";
+  };
+
+  // 真实截图：getDisplayMedia 授权一次（用户在浏览器原生弹框里选"当前标签页"），stream 保持存活供后续复用；
+  // 传 el 则按其视口矩形裁剪。返回 {__wbShot} 标记对象，handleEval 识别后走截图专用通道回传。
+  var __wbShotStream = null;
+  window.__wbCapture = async function (el) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      throw new Error("当前浏览器不支持屏幕捕获（getDisplayMedia），无法真实截图；请改用 get_dom_snapshot 获取样式快照");
+    }
+    if (!__wbShotStream || !__wbShotStream.getVideoTracks().some(function (t) { return t.readyState === "live"; })) {
+      try {
+        __wbShotStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true, audio: false,
+          preferCurrentTab: true, // Chromium：预选当前标签页，降低选错目标概率
+          selfBrowserSurface: "include",
+        });
+      } catch (e) {
+        throw new Error("未获得屏幕授权（用户拒绝或取消了浏览器弹框），无法截图: " + (e && e.message));
+      }
+      __wbShotStream.getVideoTracks()[0].addEventListener("ended", function () { __wbShotStream = null; });
+    }
+    var settings = __wbShotStream.getVideoTracks()[0].getSettings();
+    var video = document.createElement("video");
+    video.srcObject = __wbShotStream;
+    video.muted = true;
+    video.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:2px;height:2px;";
+    document.body.appendChild(video);
+    try {
+      // 等 metadata/首帧。play() 的 promise 在部分环境（无头、后台标签）可能永不 settle，
+      // 超时兜底：只要 videoWidth 可用（已产出帧）就继续截图
+      await new Promise(function (resolve) {
+        var done = false;
+        var finish = function () { if (!done) { done = true; resolve(); } };
+        video.addEventListener("loadeddata", finish);
+        var p = video.play();
+        if (p && p.catch) p.catch(function () {});
+        setTimeout(finish, 3000);
+      });
+      var srcW = video.videoWidth || settings.width;
+      var srcH = video.videoHeight || settings.height;
+      if (!srcW || !srcH) throw new Error("捕获流尺寸未知，无法截图");
+      var sx = 0, sy = 0, sw = srcW, sh = srcH;
+      if (el) {
+        var r = el.getBoundingClientRect();
+        if (r.width < 1 || r.height < 1) throw new Error("目标元素不可见（尺寸为 0），无法裁剪截图");
+        var kx = srcW / window.innerWidth, ky = srcH / window.innerHeight;
+        sx = r.x * kx; sy = r.y * ky; sw = r.width * kx; sh = r.height * ky;
+      }
+      var canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(sw));
+      canvas.height = Math.max(1, Math.round(sh));
+      canvas.getContext("2d").drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      var base64 = canvas.toDataURL("image/png").split(",")[1];
+      return { __wbShot: { base64: base64, w: canvas.width, h: canvas.height } };
+    } finally {
+      video.remove();
+    }
+  };
 
   // ---------- 安全序列化（结果预览） ----------
 
@@ -306,6 +450,26 @@
     d.background = BUBBLE_COLORS.disconnected;
     d.border = "2px solid rgba(255,255,255,.9)";
     d.boxShadow = "0 1px 4px rgba(0,0,0,.4)";
+    var NS = "http://www.w3.org/2000/svg";
+    var icon = document.createElementNS(NS, "svg"); // 白色脉冲折线图标（activity），寓意实时桥接活动
+    icon.setAttribute("viewBox", "0 0 12 12");
+    var is = icon.style;
+    is.position = "absolute";
+    is.left = "50%"; is.top = "50%";
+    is.width = "10px"; is.height = "10px";
+    is.transform = "translate(-50%, -50%)";
+    is.pointerEvents = "none";
+    var pulse = document.createElementNS(NS, "path");
+    pulse.setAttribute("d", "M1 6 H3.4 L5 2.6 L7 9.4 L8.6 6 H11");
+    pulse.setAttribute("fill", "none");
+    pulse.setAttribute("stroke", "rgba(255,255,255,.95)");
+    pulse.setAttribute("stroke-width", "1.5");
+    pulse.setAttribute("stroke-linecap", "round");
+    pulse.setAttribute("stroke-linejoin", "round");
+    icon.appendChild(pulse);
+    d.position = "relative";
+    d.display = "block";
+    bubbleDot.appendChild(icon);
     root.appendChild(bubbleDot);
     initBubbleDrag();
     restoreBubblePos();
@@ -453,6 +617,33 @@
     if (opDialogHost && opDialogHost.parentNode) opDialogHost.parentNode.removeChild(opDialogHost);
   }
 
+  // 部分页面（fullpage 整页滚动库、地图等）在 window 上捕获 wheel/touchmove 并 preventDefault 劫持滚动，
+  // 弹窗与页面共享事件流，内部滚动会被页面吞掉。这里对可滚区域非被动接管：
+  // 有可滚空间时 preventDefault + stopPropagation 并手动驱动 scrollTop，无空间时放行给页面。
+  function hookWheel(scroller) {
+    scroller.addEventListener("wheel", function (e) {
+      var max = scroller.scrollHeight - scroller.clientHeight;
+      if (max <= 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? scroller.clientHeight : 1);
+      scroller.scrollTop = Math.min(Math.max(scroller.scrollTop + delta, 0), max);
+    }, { passive: false, capture: true });
+    // 触摸滚动走 touchmove 而非 wheel，同样被页面劫持时在此接管
+    var lastTouchY = null;
+    scroller.addEventListener("touchstart", function (e) { lastTouchY = e.touches[0].clientY; }, { passive: true });
+    scroller.addEventListener("touchmove", function (e) {
+      var max = scroller.scrollHeight - scroller.clientHeight;
+      if (max <= 0) { lastTouchY = null; return; }
+      e.preventDefault();
+      e.stopPropagation();
+      if (lastTouchY == null) { lastTouchY = e.touches[0].clientY; return; }
+      var y = e.touches[0].clientY;
+      scroller.scrollTop = Math.min(Math.max(scroller.scrollTop + (lastTouchY - y), 0), max);
+      lastTouchY = y;
+    }, { passive: false, capture: true });
+  }
+
   function buildOpDialog() {
     opDialogHost = document.createElement("div");
     css(opDialogHost, {
@@ -483,6 +674,16 @@
     css(opDialogBody, { padding: "4px 16px 16px", overflowY: "auto", fontSize: "13px", color: "#111" });
     panel.appendChild(bar); panel.appendChild(opDialogBody);
     root.appendChild(panel);
+    hookWheel(opDialogBody);
+    // 滚轮/触摸落在标题栏、遮罩上时目标不在 body 内，原生滚动无处可去；转发给 body
+    panel.addEventListener("wheel", function (e) {
+      if (e.composedPath().indexOf(opDialogBody) !== -1) return; // body 自己的 hookWheel 已处理
+      var max = opDialogBody.scrollHeight - opDialogBody.clientHeight;
+      if (max <= 0) return;
+      e.preventDefault();
+      var delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? opDialogBody.clientHeight : 1);
+      opDialogBody.scrollTop = Math.min(Math.max(opDialogBody.scrollTop + delta, 0), max);
+    }, { passive: false, capture: true });
     opDialogHost.addEventListener("click", function (e) { if (e.target === opDialogHost) closeOpDialog(); }); // 点遮罩空白处关闭
   }
 
@@ -545,6 +746,7 @@
       fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: "11px", lineHeight: "1.5",
       color: "#6b7280", whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: "100px", overflowY: "auto",
     });
+    hookWheel(pre); // 单条代码超长时 pre 自身也可滚，同样接管 wheel
     item.appendChild(line);
     if (noteEl) item.appendChild(noteEl);
     item.appendChild(pre);

@@ -136,7 +136,7 @@ class FakePage {
   close() { this.ws.close(); }
 }
 
-/** 给 click/type/get_text 预设用的极简 DOM shim */
+/** 给 click/type/get_text 等预设用的极简 DOM shim */
 function installDomShim() {
   const el = {
     tagName: "BUTTON",
@@ -146,9 +146,16 @@ function installDomShim() {
     click() { el.clicked = true; },
     focus() {},
     dispatchEvent() { return true; },
+    getBoundingClientRect() { return { x: 1, y: 2, width: 30, height: 20, top: 2, bottom: 22, left: 1, right: 31 }; },
   };
   globalThis.document = { querySelector: (sel) => (sel === "#btn" || sel === "body" ? el : null) };
+  globalThis.window = { innerHeight: 800, innerWidth: 600 };
   globalThis.Event = class Event { constructor(type) { this.type = type; } };
+  // 预设生成代码引用的预置辅助（与 client.js PROLOGUE 对应的最小实现）
+  globalThis.$rect = (e) => {
+    const r = e.getBoundingClientRect();
+    return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), visible: r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth };
+  };
   return el;
 }
 
@@ -399,6 +406,43 @@ async function main() {
   } finally {
     child5.kill("SIGKILL");
     await rm(dataFile5, { force: true });
+  }
+
+  // 登录态跨重启：sessions.json 持久化，服务器更新/重启后 cookie 依然有效
+  {
+    console.log("\n— 登录态跨重启持久化 —");
+    const port6 = await freePort();
+    const dataFile6 = path.join(os.tmpdir(), `wb-groups-test-${port6}.json`);
+    const spawnServer = () => spawn(process.execPath, [SERVER, "--transport", "http", "--admin", "admin-pw", "--data", dataFile6, "--port", String(port6)], { stdio: ["pipe", "pipe", "pipe"] });
+    const child6 = spawnServer();
+    child6.stderr.on("data", (d) => process.env.WB_DEBUG && console.error("[server6]", d.toString().trim()));
+    try {
+      await waitForHttp(`http://127.0.0.1:${port6}/`);
+      const loginRes = await fetch(`http://127.0.0.1:${port6}/admin/api/login`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: "admin-pw" }),
+      });
+      const cookie6 = (loginRes.headers.getSetCookie()[0] || "").split(";")[0];
+      check("登录获得会话 cookie", loginRes.status === 200 && cookie6.startsWith("wb_session="));
+
+      // 模拟服务器更新：杀掉进程再以同一 data 目录重启
+      child6.kill("SIGKILL");
+      await sleep(300);
+      const child6b = spawnServer();
+      child6b.stderr.on("data", (d) => process.env.WB_DEBUG && console.error("[server6b]", d.toString().trim()));
+      try {
+        await waitForHttp(`http://127.0.0.1:${port6}/`);
+        const after = await fetch(`http://127.0.0.1:${port6}/admin/api/session`, { headers: { Cookie: cookie6 } }).then((r) => r.json());
+        check("服务器重启后原 cookie 仍为已登录态", after?.loggedIn === true, JSON.stringify(after));
+        const stillAuthed = await fetch(`http://127.0.0.1:${port6}/admin/api/groups`, { headers: { Cookie: cookie6 } });
+        check("重启后管理 API 用原 cookie 可访问", stillAuthed.status === 200);
+      } finally {
+        child6b.kill("SIGKILL");
+      }
+    } finally {
+      child6.kill("SIGKILL");
+      await rm(dataFile6, { force: true });
+      await rm(path.join(path.dirname(dataFile6), "sessions.json"), { force: true }).catch(() => {});
+    }
   }
 
   // stdio + --admin 组合应拒绝启动

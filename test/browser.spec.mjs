@@ -24,7 +24,9 @@ async function callTool(name, args = {}, base = BASE) {
   });
   const data = await res.json();
   if (data.error) return { isError: true, text: data.error.message };
-  return { isError: !!data.result?.isError, text: data.result?.content?.map((c) => c.text).join("\n") ?? "" };
+  const contents = data.result?.content ?? [];
+  const image = contents.find((c) => c.type === "image");
+  return { isError: !!data.result?.isError, text: contents.filter((c) => c.type === "text").map((c) => c.text).join("\n") ?? "", image };
 }
 
 /** 解析 list_pages 文本 → [{ pageId, title }] */
@@ -224,6 +226,116 @@ test.describe.serial("web-bridge-mcp 真实浏览器链路", () => {
     const rs = await callTool("scroll_to", { selector: "#bottom-el" });
     expect(rs.text).toContain("visible");
     expect(rs.text).not.toContain("false");
+  });
+
+  test("eval 预置 $wait / $frame / $rect / $css", async ({ browser }) => {
+    await openPage(browser, {
+      html: `<!doctype html><html><head><title>预置函数页</title></head><body>
+        <div id="host"></div>
+        <iframe id="frm" srcdoc="<button id='in-frame'>框内按钮</button><div id='fhost'></div><script>
+          document.getElementById('fhost').attachShadow({mode:'open'}).innerHTML='<span id=fdeep>框内shadow</span>';
+        <\/script>"></iframe>
+        <div id="mover">样式目标</div>
+        <script>
+          const root = document.getElementById("host").attachShadow({ mode: "open" });
+          root.innerHTML = '<p id="late-p">迟到</p>';
+        </script>
+      </body></html>`,
+      title: "预置函数页",
+    });
+    // $wait：函数条件（等文本变化）；选择器条件只看元素是否存在，元素已在时立即返回
+    await callTool("eval_js", { code: "setTimeout(() => { $deep('#late-p').textContent = '出现了'; }, 400)" });
+    const rw = await callTool("eval_js", { code: "(await $wait(() => $deep('#late-p').textContent === '出现了')) ? 'wait-ok' : 'no'" });
+    expect(rw.text).toContain("wait-ok");
+    const rw2 = await callTool("eval_js", { code: "(await $wait(() => document.title === '预置函数页')) ? 'fn-ok' : 'no'" });
+    expect(rw2.text).toContain("fn-ok");
+    const rto = await callTool("eval_js", { code: "$wait('#never', 300)" });
+    expect(rto.isError).toBe(true);
+    expect(rto.text).toContain("超时");
+    // $frame：同源 iframe 内查询（含穿其内部 shadow）
+    expect((await callTool("eval_js", { code: "$frame('#frm').$('#in-frame').textContent" })).text).toContain("框内按钮");
+    expect((await callTool("eval_js", { code: "$frame('#frm').$deep('#fdeep').textContent" })).text).toContain("框内shadow");
+    // $frame 操作框内元素：点击后改框内文本
+    await callTool("eval_js", {
+      code: "const f = $frame('#frm'); f.$('#in-frame').addEventListener('click', () => { f.$('#in-frame').textContent = 'clicked-in-frame'; }); f.$('#in-frame').click(); f.$('#in-frame').textContent",
+    });
+    // $rect / $css
+    const rr = await callTool("eval_js", { code: "JSON.stringify($rect($('#mover')))" });
+    expect(rr.text).toContain('"visible":true');
+    await callTool("eval_js", { code: "$css($('#mover'), { color: 'rgb(255, 0, 0)' }).id" });
+    expect((await callTool("eval_js", { code: "getComputedStyle($('#mover')).color" })).text).toContain("rgb(255, 0, 0)");
+  });
+
+  test("预设返回值附带几何与状态（rect / disabled）", async ({ browser }) => {
+    await openPage(browser, {
+      html: `<!doctype html><html><head><title>返回值页</title></head><body>
+        <button id="ok-btn">可点</button>
+        <button id="dis-btn" disabled>禁用</button>
+      </body></html>`,
+      title: "返回值页",
+    });
+    const rc = await callTool("click", { selector: "#dis-btn" });
+    expect(rc.text).toContain("disabled: true");
+    expect(rc.text).toContain("rect: {");
+    expect(rc.text).toContain("visible: true");
+    const rt = await callTool("type", { selector: "input", text: "" });
+    expect(rt.isError).toBe(true); // 页面无输入框，确认错误路径仍工作
+    const rh = await callTool("hover", { selector: "#ok-btn" });
+    expect(rh.text).toContain("rect: {");
+    expect(rh.text).toContain("visible: true");
+    const rs = await callTool("scroll_to", { selector: "#ok-btn" });
+    expect(rs.text).toContain("rect: {");
+    expect(rs.text).toContain("visible: true");
+  });
+
+  test("get_dom_snapshot 样式快照 / get_screenshot 真实截图", async ({ browser }) => {
+    await openPage(browser, {
+      html: `<!doctype html><html><head><title>快照页</title></head><body>
+        <div id="host"></div>
+        <div id="card" style="background-color: rgb(255, 0, 0); border: 2px solid black; padding: 4px">卡片 <span id="inner">内文</span></div>
+        <script>
+          document.getElementById("host").attachShadow({ mode: "open" })
+            .innerHTML = '<div id="deep-card" style="color: rgb(0, 128, 0)">shadow卡片</div>';
+        </script>
+      </body></html>`,
+      title: "快照页",
+    });
+    // 样式快照：computed style + 几何 + 文本，穿 shadow
+    const rs = await callTool("get_dom_snapshot", { selector: "#card" });
+    expect(rs.isError).toBeFalsy();
+    expect(rs.text).toContain('div#card>');
+    expect(rs.text).toContain("background-color=rgb(255, 0, 0)");
+    expect(rs.text).toContain('<span#inner>');
+    expect(rs.text).toContain('文本:"内文"');
+    const rs2 = await callTool("get_dom_snapshot", { selector: "#deep-card" });
+    expect(rs2.text).toContain("color=rgb(0, 128, 0)");
+    // 找不到元素报错
+    const miss = await callTool("get_dom_snapshot", { selector: "#nope" });
+    expect(miss.isError).toBe(true);
+    // 真实截图：无头环境无法弹授权框，stub getDisplayMedia 返回 canvas 画出的流，验证完整回传链路
+    const rstub = await callTool("eval_js", {
+      code: `const c = document.createElement('canvas'); c.width = 80; c.height = 40;
+        const ctx = c.getContext('2d'); ctx.fillStyle = 'rgb(0, 0, 255)'; ctx.fillRect(0, 0, 80, 40);
+        let dpErr = '';
+        try { Object.defineProperty(navigator, 'mediaDevices', { value: {}, configurable: true }); } catch (e) { dpErr = e.name + ':' + e.message; }
+        const dpAfter = typeof navigator.mediaDevices;
+        navigator.mediaDevices.getDisplayMedia = () => Promise.resolve(c.captureStream(30));
+        [dpErr, dpAfter, typeof navigator.mediaDevices.getDisplayMedia]`,
+    });
+    expect(rstub.isError, rstub.text).toBeFalsy();
+    const shot = await callTool("get_screenshot", { timeoutMs: 10000 });
+    expect(shot.isError, shot.text).toBeFalsy();
+    // MCP image content：base64 PNG + 说明文本
+    expect(shot.image).toBeTruthy();
+    expect(shot.image.mimeType).toBe("image/png");
+    expect(shot.image.data.length).toBeGreaterThan(100);
+    expect(shot.text).toContain("截图");
+    // 第二次调用复用已授权的 stream，无需再弹框
+    const shot2 = await callTool("get_screenshot", { timeoutMs: 10000 });
+    expect(shot2.isError, shot2.text).toBeFalsy();
+    // 元素裁剪路径
+    const shot3 = await callTool("get_screenshot", { selector: "#card", timeoutMs: 10000 });
+    expect(shot3.isError, shot3.text).toBeFalsy();
   });
 
   test("多页 pageId 选择与断开清理", async ({ browser }) => {

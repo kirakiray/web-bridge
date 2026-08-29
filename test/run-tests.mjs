@@ -136,7 +136,7 @@ class FakePage {
   close() { this.ws.close(); }
 }
 
-/** 给 click/type/get_text 预设用的极简 DOM shim */
+/** 给 click/type/get_text 等预设用的极简 DOM shim */
 function installDomShim() {
   const el = {
     tagName: "BUTTON",
@@ -146,9 +146,16 @@ function installDomShim() {
     click() { el.clicked = true; },
     focus() {},
     dispatchEvent() { return true; },
+    getBoundingClientRect() { return { x: 1, y: 2, width: 30, height: 20, top: 2, bottom: 22, left: 1, right: 31 }; },
   };
   globalThis.document = { querySelector: (sel) => (sel === "#btn" || sel === "body" ? el : null) };
+  globalThis.window = { innerHeight: 800, innerWidth: 600 };
   globalThis.Event = class Event { constructor(type) { this.type = type; } };
+  // 预设生成代码引用的预置辅助（与 client.js PROLOGUE 对应的最小实现）
+  globalThis.$rect = (e) => {
+    const r = e.getBoundingClientRect();
+    return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), visible: r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth };
+  };
   return el;
 }
 

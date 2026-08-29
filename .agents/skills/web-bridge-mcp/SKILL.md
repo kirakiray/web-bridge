@@ -1,12 +1,12 @@
 ---
 name: "web-bridge-mcp"
 version: "1.0.3"
-description: "Guide to web-bridge-mcp MCP tools (list_pages, eval_js, get_console, click, type, get_text). Invoke when running JS in, reading console of, or clicking/typing on web pages that include client.js — i.e. whenever testing, debugging, inspecting or operating the connected browser pages."
+description: "Guide to web-bridge-mcp MCP tools (list_pages, eval_js, get_console, click, type, get_text, wait_for, hover, focus, scroll_to). Invoke when running JS in, reading console of, or clicking/typing on web pages that include client.js — i.e. whenever testing, debugging, inspecting or operating the connected browser pages."
 ---
 
 # web-bridge-mcp 使用指南
 
-web-bridge-mcp 是一个 MCP 中转服务（服务器已部署）。目标网页只要引入了它的 `client.js`（当前已有页面接入），AI 就能通过以下 7 个 MCP 工具在**用户真实浏览器页面**里执行 JS、读控制台、模拟点击/输入。页面右上角有连接状态气泡：绿 = 已连接。
+web-bridge-mcp 是一个 MCP 中转服务（服务器已部署）。目标网页只要引入了它的 `client.js`（当前已有页面接入），AI 就能通过以下 11 个 MCP 工具在**用户真实浏览器页面**里执行 JS、读控制台、模拟点击/输入。页面右上角有连接状态气泡：绿 = 已连接。
 
 > 本文件同时是 `get_guide` MCP 工具的下发内容（server 每次调用现读本文件），所以更新这里的经验后，任何 MCP 客户端无需安装 skill、无需重启 server 都能即时读到最新版。
 
@@ -21,6 +21,12 @@ web-bridge-mcp 是一个 MCP 中转服务（服务器已部署）。目标网页
 | `click` | 按 CSS 选择器点击元素（先 scrollIntoView） | `selector`（必填）、`pageId`、`note` |
 | `type` | 向输入框写入文本并派发 input / change 事件（兼容 contenteditable） | `selector`、`text`（必填）、`pageId`、`note` |
 | `get_text` | 读元素 innerText，selector 省略时读整个 body | `selector`（可选，默认 body）、`pageId`、`note` |
+| `wait_for` | 轮询等待条件成立（SPA 异步渲染必备用） | `selector`（等元素出现，配 `absent: true` 等消失）或 `code`（返回真值的 JS 表达式，二选一）、`timeoutMs`（默认 10000）、`pageId`、`note` |
+| `hover` | 悬停元素，派发 mouseover / mouseenter（触发菜单、tooltip） | `selector`（必填）、`pageId`、`note` |
+| `focus` | 聚焦元素（focus + focusin） | `selector`（必填）、`pageId`、`note` |
+| `scroll_to` | 滚动到元素（返回位置与是否可见） | `selector`（必填）、`pageId`、`note` |
+
+> click / type / get_text / wait_for / hover / focus / scroll_to 的 `selector` 均为**深度选择器**：light DOM 查不到时自动穿入所有已打开 shadowRoot（`$deep` 逻辑），Web Components 页面直接用即可。
 
 ## 标准工作流
 
@@ -28,8 +34,8 @@ web-bridge-mcp 是一个 MCP 中转服务（服务器已部署）。目标网页
 2. pageId 规则：
    - 恰好只有一个页面连接时可省略；
    - 0 页或多页时报错并附带页面清单，从清单选一个 pageId **完整原样回传**（不可截断、改写，截断会导致查找失败）。
-3. 操作 → 验证：`click` / `type` 后用 `get_console` 看有无报错，用 `get_text` / `eval_js` 验证页面状态。
-4. 复杂逻辑一律用 `eval_js`（click / type / get_text 本质也是生成 JS 走 eval 通道，预设固定 10s 超时）。
+3. 操作 → 验证：SPA 页面元素可能异步出现，操作前可 `wait_for {selector}`；`click` / `type` 后用 `get_console` 看有无报错，用 `get_text` / `eval_js` 验证页面状态。
+4. 复杂逻辑一律用 `eval_js`（所有预设本质也是生成 JS 走 eval 通道，预设固定 10s 超时）。
 
 ## eval_js 写法要点
 

@@ -146,15 +146,27 @@
       return new Function('"use strict";\n' + PROLOGUE + "return (async () => (\n" + code + "\n))();");
     } catch (e) { /* 不是单个表达式，走语句块 */ }
     // 语句块 + 自动 return：把最后一句表达式语句补上 return（尾部跨行表达式/块语句时
-    // 转换结果编译不过，自然退回原始语句块包装）
+    // 转换结果编译不过，自然退回原始语句块包装）。
+    // 注意：同一行含多条语句时只能对最后一个 ';' 之后的语句补 return——
+    // 若对整行补 return，会变成 `return 第一句; 后续语句`，后续全部沦为死代码且编译仍通过。
     var lines = code.split("\n");
     for (var i = lines.length - 1; i >= 0; i--) {
       var t = lines[i].trim();
       if (t && t !== ";") {
         if (NO_AUTORETURN_RE.test(t)) break; // 最后一句不是表达式语句，保持原样
-        var transformed = lines.slice(0, i).concat(["return " + t], lines.slice(i + 1)).join("\n");
+        var semi = t.lastIndexOf(";");
+        if (semi !== -1) {
+          // 多语句行：只 return 最后一个 ';' 之后的语句；补不出合法变换就放弃自动 return（宁可不返回值，不可吞语句）
+          var tail = t.slice(semi + 1).trim();
+          if (tail && !NO_AUTORETURN_RE.test(tail)) {
+            try {
+              return new Function('"use strict";\n' + PROLOGUE + "return (async () => {\n" + t.slice(0, semi + 1) + " return " + tail + "\n})();");
+            } catch (e2) { /* fall through */ }
+          }
+          break;
+        }
         try {
-          return new Function('"use strict";\n' + PROLOGUE + "return (async () => {\n" + transformed + "\n})();");
+          return new Function('"use strict";\n' + PROLOGUE + "return (async () => {\nreturn " + t + "\n})();");
         } catch (e2) { /* 转换不合法，退回 */ }
         break;
       }

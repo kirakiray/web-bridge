@@ -157,6 +157,75 @@ test.describe.serial("web-bridge-mcp 真实浏览器链路", () => {
     expect(h2.text).toContain("web-bridge-mcp 测试页");
   });
 
+  test("深度选择器预设 / wait_for / hover / focus / scroll_to", async ({ browser }) => {
+    await openPage(browser, {
+      html: `<!doctype html><html><head><title>新工具页</title></head><body style="height:3000px">
+        <div id="host"></div>
+        <div id="late" style="display:none">迟到的元素</div>
+        <input id="target-input" />
+        <script>
+          const root = document.getElementById("host").attachShadow({ mode: "open" });
+          root.innerHTML = '<button id="deep-btn">藏在 shadow 里</button><input id="deep-input" />';
+          root.getElementById("deep-btn").addEventListener("click", () => { document.title = "deep-clicked"; });
+          setTimeout(() => { document.getElementById("late").style.display = "block"; }, 600);
+        </script>
+      </body></html>`,
+      title: "新工具页",
+    });
+    // 深度选择器：click / type / get_text 在 light DOM 查不到时回退 $deep 穿 shadow
+    const rc = await callTool("click", { selector: "#deep-btn" });
+    expect(rc.isError).toBeFalsy();
+    await expect.poll(async () => (await callTool("eval_js", { code: "document.title" })).text).toContain("deep-clicked");
+    const rt = await callTool("type", { selector: "#deep-input", text: "shadow输入" });
+    expect(rt.isError).toBeFalsy();
+    const rv = await callTool("eval_js", { code: "$deep('#deep-input').value" });
+    expect(rv.text).toContain("shadow输入");
+    // 普通元素不受影响（先走 light DOM）
+    expect((await callTool("get_text", { selector: "#late" })).text).toContain("迟到的元素");
+    // 找不到元素仍报错
+    const miss = await callTool("click", { selector: "#no-such-el" });
+    expect(miss.isError).toBe(true);
+    expect(miss.text).toContain("找不到元素");
+
+    // wait_for：等元素出现（页面 600ms 后才显示 #late）
+    const rw = await callTool("wait_for", { selector: "#late" });
+    expect(rw.text).toContain("satisfied");
+    // 等元素消失：#late 目前可见，先隐藏再等
+    await callTool("eval_js", { code: "setTimeout(() => document.getElementById('late').remove(), 300)" });
+    const rw2 = await callTool("wait_for", { selector: "#late", absent: true });
+    expect(rw2.text).toContain("satisfied");
+    // 谓词模式（支持 await）
+    const rw3 = await callTool("wait_for", { code: "document.title === 'deep-clicked'" });
+    expect(rw3.text).toContain("satisfied");
+    // 超时报错
+    const rto = await callTool("wait_for", { selector: "#never-appears", timeoutMs: 500 });
+    expect(rto.isError).toBe(true);
+    expect(rto.text).toContain("超时");
+    // 参数校验：都没填 / 都填
+    expect((await callTool("wait_for", {})).isError).toBe(true);
+    expect((await callTool("wait_for", { selector: "#late", code: "true" })).isError).toBe(true);
+
+    // hover：派发 mouseover/mouseenter（单行多语句 eval 同时回归验证自动 return 不吞语句）
+    await callTool("eval_js", {
+      code: "window.__hovered = 0; $deep('#deep-btn').addEventListener('mouseover', () => window.__hovered++)",
+    });
+    const rhov = await callTool("hover", { selector: "#deep-btn" });
+    expect(rhov.isError, rhov.text).toBeFalsy();
+    expect((await callTool("eval_js", { code: "window.__hovered" })).text).toContain("1");
+    // focus：聚焦后 activeElement 生效
+    const rf = await callTool("focus", { selector: "#target-input" });
+    expect(rf.text).toContain("focused");
+    const active = await callTool("eval_js", { code: "document.activeElement.id" });
+    expect(active.text).toContain("target-input");
+    // scroll_to：长页面底部元素滚入视口
+    await callTool("eval_js", {
+      code: "const b = document.createElement('div'); b.id = 'bottom-el'; b.style.marginTop = '2800px'; b.textContent = '页底'; document.body.appendChild(b)",
+    });
+    const rs = await callTool("scroll_to", { selector: "#bottom-el" });
+    expect(rs.text).toContain("visible");
+    expect(rs.text).not.toContain("false");
+  });
+
   test("多页 pageId 选择与断开清理", async ({ browser }) => {
     const a = await openPage(browser);
     const b = await openPage(browser, {

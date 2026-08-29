@@ -1,5 +1,11 @@
 # web-bridge-mcp — Let AI editors operate any static web page
 
+[![CI](https://github.com/kirakiray/web-bridge-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/kirakiray/web-bridge-mcp/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/web-bridge-mcp)](https://www.npmjs.com/package/web-bridge-mcp)
+[![node](https://img.shields.io/node/v/web-bridge-mcp)](https://www.npmjs.com/package/web-bridge-mcp)
+[![license](https://img.shields.io/npm/l/web-bridge-mcp)](https://github.com/kirakiray/web-bridge-mcp/blob/main/LICENSE)
+[![MCP](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io)
+
 **web-bridge-mcp** is an MCP Server (single Node process, dual interfaces) that lets AI editors execute JavaScript, read the console, and simulate clicks / typing on any static web page that includes `client.js`. Great for cross-browser, multi-tab local debugging — and it can also be deployed to a public server.
 
 ```
@@ -156,11 +162,19 @@ Groups are fully isolated: an editor connected to group A cannot see or touch gr
 | Tool | Params | Description |
 | --- | --- | --- |
 | `list_pages` | — | List connected pages (pageId, title, URL, connected-at) |
-| `eval_js` | `code`, optional `pageId` / `timeoutMs` / `note` | Execute arbitrary JS in the page and return the serialized result; `await` supported; last expression is returned automatically, or use `return` in a statement block; `$` / `$$` (querySelector / querySelectorAll) provided |
-| `get_console` | optional `pageId` / `limit` | Read the page's recent console output and uncaught errors |
-| `click` | `selector`, optional `pageId` / `note` | Find element by CSS selector and click() (scrolls into view first) |
+| `eval_js` | `code`, optional `pageId` / `timeoutMs` / `note` | Execute arbitrary JS in the page and return the serialized result; `await` supported; last expression is returned automatically, or use `return` in a statement block; `$` / `$$` (querySelector / querySelectorAll), `$deep` / `$$deep` (pierce open shadow roots), `$import` (page-relative dynamic import), `$wait` (poll until a condition holds), `$frame` (same-origin iframe query helpers), `$rect` (element geometry + visibility), `$css` (batch style writes) provided |
+| `get_console` | optional `pageId` / `limit` / `since` | Read the page's recent console output and uncaught errors; `since` for incremental fetch |
+| `click` | `selector`, optional `pageId` / `note` | Find element by CSS selector and click() (scrolls into view first); returns geometry / visibility / disabled state |
 | `type` | `selector` / `text`, optional `pageId` / `note` | Focus, write text, dispatch input / change events (contenteditable compatible) |
 | `get_text` | optional `selector` (default body), `pageId` / `note` | Read element innerText |
+| `wait_for` | `selector` (or `code` predicate), optional `absent` / `timeoutMs` / `pageId` / `note` | Poll until an element appears/disappears or a predicate holds — essential for SPA async rendering |
+| `hover` | `selector`, optional `pageId` / `note` | Hover an element (dispatches mouseover / mouseenter — opens menus, tooltips) |
+| `focus` | `selector`, optional `pageId` / `note` | Focus an element (focus + focusin) |
+| `scroll_to` | `selector`, optional `pageId` / `note` | Scroll an element into view; returns position and visibility |
+| `get_dom_snapshot` | `selector`, optional `depth` / `maxNodes` / `pageId` / `note` | "Virtual screenshot" of an element subtree: one line per visible node with geometry + key computed styles (color / font / border / shadow / z-index) + text; pierces shadow DOM; no permission needed |
+| `get_screenshot` | optional `selector` / `timeoutMs` / `pageId` / `note` | Real screenshot returned as a PNG image (getDisplayMedia screen capture); **the first call pops a native browser prompt — the user must pick "current tab" and grant once**, after which it stays silent for the page's lifetime; `selector` crops to the element |
+
+`selector` in click / type / get_text / wait_for / hover / focus / scroll_to / get_dom_snapshot / get_screenshot is a **deep selector**: when the light DOM has no match it automatically pierces open shadow roots — use it directly on Web Components pages (ofa.js / senti-ui etc.).
 
 `pageId` rule: it can be omitted when exactly one page is connected; with multiple pages and no pageId the tool returns an error plus the page list, and the AI retries with the right pageId.
 
@@ -203,5 +217,5 @@ eval conventions (client.js): code is first wrapped as an expression `async () =
 
 ## Development
 
-- Tests: `npm test` (Node e2e: spawns the server + fake pages + tool calls over both stdio and HTTP transports); `npm run test:browser` (Playwright real-browser e2e: Chromium loads [test/test-page.html](test/test-page.html), verifies all 6 tools over a real WebSocket; run `npx playwright install chromium` first). The real-browser flow can also be verified manually with the test page.
-- Dependencies: `ws` (WebSocket), `@modelcontextprotocol/sdk` (MCP), `zod` (validation); dev dependency `@playwright/test`. Node ≥ 18.
+- Tests: `npm test` (Node e2e: spawns the server + fake pages + tool calls over both stdio and HTTP transports); `npm run test:browser` (Playwright real-browser e2e: Chromium loads [test/test-page.html](test/test-page.html), verifies all tools over a real WebSocket; run `npx playwright install chromium` first). The real-browser flow can also be verified manually with the test page.
+- Dependencies: `ws` (WebSocket), `@modelcontextprotocol/sdk` (MCP), `zod` (validation); dev dependency `@playwright/test`. Node ≥ 20.

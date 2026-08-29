@@ -1,5 +1,11 @@
 # web-bridge-mcp — 让 AI 编辑器操纵任意静态网页的 MCP 工具
 
+[![CI](https://github.com/kirakiray/web-bridge-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/kirakiray/web-bridge-mcp/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/web-bridge-mcp)](https://www.npmjs.com/package/web-bridge-mcp)
+[![node](https://img.shields.io/node/v/web-bridge-mcp)](https://www.npmjs.com/package/web-bridge-mcp)
+[![license](https://img.shields.io/npm/l/web-bridge-mcp)](https://github.com/kirakiray/web-bridge-mcp/blob/main/LICENSE)
+[![MCP](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io)
+
 **web-bridge-mcp** 是一个 MCP Server（Node 单进程，双接口），让 AI 编辑器在引入了 `client.js` 的静态网页上执行 JavaScript、读取控制台、模拟点击 / 输入。适用于跨浏览器、多标签页的本地联调，也支持部署到外网服务器。
 
 [English documentation](README.md)
@@ -155,11 +161,19 @@ npx web-bridge-mcp --transport http --port 3210 --admin <管理密码>
 | 工具 | 参数 | 说明 |
 | --- | --- | --- |
 | `list_pages` | — | 列出已连接页面（pageId、标题、URL、连接时间） |
-| `eval_js` | `code`，可选 `pageId` / `timeoutMs` / `note` | 在页面执行任意 JS 并返回序列化结果；支持 `await`；最后一句表达式自动返回，语句块可用 `return`；预置 `$` / `$$`（querySelector / querySelectorAll） |
-| `get_console` | 可选 `pageId` / `limit` | 读取页面最近的 console 输出与未捕获异常 |
-| `click` | `selector`，可选 `pageId` / `note` | 查找元素并触发 click()（先 scrollIntoView） |
+| `eval_js` | `code`，可选 `pageId` / `timeoutMs` / `note` | 在页面执行任意 JS 并返回序列化结果；支持 `await`；最后一句表达式自动返回，语句块可用 `return`；预置 `$` / `$$`（querySelector / querySelectorAll）、`$deep` / `$$deep`（穿 shadow DOM 深度查询）、`$import`（页面路径动态 import）、`$wait`（轮询等条件成立）、`$frame`（同源 iframe 查询辅助）、`$rect`（元素几何+可见性）、`$css`（批量写样式） |
+| `get_console` | 可选 `pageId` / `limit` / `since` | 读取页面最近的 console 输出与未捕获异常；`since` 增量拉取 |
+| `click` | `selector`，可选 `pageId` / `note` | 查找元素并触发 click()（先 scrollIntoView），返回几何/可见性/禁用状态 |
 | `type` | `selector` / `text`，可选 `pageId` / `note` | 聚焦、写入文本、派发 input / change 事件（兼容 contenteditable） |
 | `get_text` | 可选 `selector`（默认 body）、`pageId` / `note` | 读取元素 innerText |
+| `wait_for` | `selector`（或 `code` 谓词），可选 `absent` / `timeoutMs` / `pageId` / `note` | 轮询等待元素出现/消失或谓词成立，SPA 异步渲染必备 |
+| `hover` | `selector`，可选 `pageId` / `note` | 悬停元素，派发 mouseover / mouseenter（触发菜单、tooltip） |
+| `focus` | `selector`，可选 `pageId` / `note` | 聚焦元素（focus + focusin） |
+| `scroll_to` | `selector`，可选 `pageId` / `note` | 滚动到元素，返回位置与可见性 |
+| `get_dom_snapshot` | `selector`，可选 `depth` / `maxNodes` / `pageId` / `note` | 对元素子树生成「虚拟截图」：每节点一行几何 + 关键样式（颜色/字号/边框/阴影/z-index 等）+ 文本，穿 shadow DOM，免授权 |
+| `get_screenshot` | 可选 `selector` / `timeoutMs` / `pageId` / `note` | 真实截图返回 PNG 图片（getDisplayMedia 屏幕捕获）；**首次调用用户浏览器会弹授权框，需选择"当前标签页"授权一次**，之后页面存续期内免打扰；传 `selector` 按元素裁剪 |
+
+click / type / get_text / wait_for / hover / focus / scroll_to / get_dom_snapshot / get_screenshot 的 `selector` 均为**深度选择器**：light DOM 查不到时自动穿入已打开的 shadowRoot，Web Components 页面（ofa.js / senti-ui 等）直接用即可。
 
 `pageId` 规则：只连了一个页面时可省略；连了多个页面而不指定时，工具会返回错误和页面清单，AI 会自行补上 `pageId` 重试。
 
@@ -202,5 +216,5 @@ eval 执行约定（client.js）：先按表达式包装 `async () => ( code )`�
 
 ## 开发
 
-- 测试：`npm test`（Node e2e：起进程 + 模拟页面 + stdio/HTTP 双传输调工具）；`npm run test:browser`（Playwright 真实浏览器链路：Chromium 加载 [test/test-page.html](test/test-page.html)，经真实 WebSocket 验证 6 个工具，首次前执行 `npx playwright install chromium`）。真实浏览器链路也可打开测试页手动验证。
-- 依赖：`ws`（WebSocket）、`@modelcontextprotocol/sdk`（MCP）、`zod`（参数校验）；开发依赖 `@playwright/test`。Node ≥ 18。
+- 测试：`npm test`（Node e2e：起进程 + 模拟页面 + stdio/HTTP 双传输调工具）；`npm run test:browser`（Playwright 真实浏览器链路：Chromium 加载 [test/test-page.html](test/test-page.html)，经真实 WebSocket 验证全部工具，首次前执行 `npx playwright install chromium`）。真实浏览器链路也可打开测试页手动验证。
+- 依赖：`ws`（WebSocket）、`@modelcontextprotocol/sdk`（MCP）、`zod`（参数校验）；开发依赖 `@playwright/test`。Node ≥ 20。

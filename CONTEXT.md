@@ -26,8 +26,8 @@ AI 编辑器(MCP客户端) ←stdio 或 HTTP→ [server.js 中转进程] ←WebS
 | `lib/hub.mjs` | 单实例模式的 HTTP+WS 宿主：`/client.js` 下发(注入 wsUrl，支持 CORS 与 Chrome Local Network Access 预检)、`/` 状态页、`/mcp` 转发、WS upgrade、30s 心跳清死连接、按 `X-Forwarded-*` 推断对外 wss 地址（反代 TLS 终止场景） |
 | `lib/mcp.mjs` | MCP 工具层。`createMcpServer(hub)` 注册 13 个工具（stdio/http 两模式共用；`get_guide` 每次调用现读 SKILL.md，指南更新即时生效）；`registerTools(hub)` 为 stdio 模式接 StdioServerTransport。hub 需要 `introScript` 字段（分组模式提供分组专属脚本地址） |
 | `lib/mcp-http.mjs` | MCP Streamable HTTP 传输（stateless，`enableJsonResponse`）。token 鉴权支持三种：`Authorization: Bearer`、`X-Web-Bridge-MCP-Token` 头、`?token=` 查询参数；CORS 全开 |
-| `lib/group-server.mjs` | 分组模式（`--transport http --admin <密码>`）：一个进程托管多组互相隔离的 registry。路由：`/admin`(管理后台)、`/admin/api/*`(wb_session cookie 会话鉴权)、`/g/<token>/{client.js,mcp,ws}`(分组专属入口，token 在路径中即鉴权)。分组持久化到 `data/groups.json`（含 token，已 gitignore）。加载后台静态资源时把 index.html 里的 `__VERSION__` 占位符替换为 package.json 版本号 |
-| `lib/admin/` | 管理后台前端（index.html + admin.css + admin.js，无框架无构建，启动时读入内存缓存；admin.js 内置 zh-CN/en/ja 三语言 i18n）。登录页与顶栏品牌处显示版本号（index.html 的 `__VERSION__` 占位符由 group-server 注入）。分组详情的 MCP 配置片段，server 名随分组名走：`web-bridge-mcp-<分组名slug>`（小写、非文字/数字压成 `-`、中日文等文字与数字保留；slug 为空回退 `web-bridge-mcp`），多分组接入同一编辑器时可在 mcpServers 里区分 |
+| `lib/group-server.mjs` | 分组模式（`--transport http --admin <密码>`）：一个进程托管多组互相隔离的 registry。路由：`/admin`(管理后台)、`/admin/api/*`(wb_session cookie 会话鉴权)、`/g/<token>/{client.js,mcp,ws}`(分组专属入口，token 在路径中即鉴权)。分组持久化到 `data/groups.json`（含 token，已 gitignore）；管理会话持久化到 `data/sessions.json`（同步写、登录/登出/过期清理时落盘、启动时加载并剔除过期条目）——服务器重启/更新后登录态保留，cookie 有效期即会话 TTL。加载后台静态资源时把 index.html 里的 `__VERSION__` 占位符替换为 package.json 版本号 |
+| `lib/admin/` | 管理后台前端（index.html + admin.css + admin.js，无框架无构建，启动时读入内存缓存；admin.js 内置 zh-CN/en/ja 三语言 i18n）。**hash 应用路由**：`#/groups` 列表、`#/group/<id>` 详情，hashchange 驱动 `route()` 渲染；未登录时任何 hash 都渲染登录页，登录成功按当前 hash 恢复视图——刷新/直达不掉路由。详情页操作记录表 `detail-btn` → `navigate("#/group/<id>")`，返回 → `#/groups`。登录页与顶栏品牌处显示版本号（index.html 的 `__VERSION__` 占位符由 group-server 注入）。分组详情的 MCP 配置片段，server 名随分组名走：`web-bridge-mcp-<分组名slug>`（小写、非文字/数字压成 `-`、中日文等文字与数字保留；slug 为空回退 `web-bridge-mcp`），多分组接入同一编辑器时可在 mcpServers 里区分 |
 | `lib/version.mjs` | 唯一版本来源：读 package.json 的 version，导出 `VERSION`。`lib/mcp.mjs`（MCP serverInfo）与 `lib/group-server.mjs`（后台版本注入）共用 |
 | `lib/name.mjs` | 分组 → MCP server 命名规则（唯一服务端实现）：`web-bridge-mcp-<分组名slug>`（小写、非文字/数字压成 `-`、中日文等文字与数字保留，slug 空回退 `web-bridge-mcp`）。分组模式下 serverInfo 自报名随此规则；`lib/admin/admin.js` 前端有一份等价实现用于配置片段，改规则两处同步 |
 | `test/run-tests.mjs` | Node e2e（`npm test`）：自实现极简 MCP stdio 客户端 + FakePage 模拟页面 + DOM shim，覆盖 5 个实例场景（默认/令牌/HTTP 传输/HTTP+令牌/分组模式） |
@@ -69,7 +69,7 @@ eval 执行约定（client.js `compile`）：三级包装——先按表达式 `
 - WS 协议层心跳 ping/pong（30s）清死连接；client.js 断线自动重连。
 - 反代场景：hub 与 group-server 各有一份相同的 `publicWsUrl()`，按 `X-Forwarded-Proto/Host` 生成正确的 ws/wss 地址注入 client.js。
 - 分组模式下各分组独立 registry（页面池/console/eval 历史互不可见），分组删除时 `registry.close()` 断开该组所有页面。
-- 管理后台登录失败延迟 300ms 拖慢暴力破解；会话仅存内存（重启失效），TTL 7 天。
+- 管理后台登录失败延迟 300ms 拖慢暴力破解；会话 TTL 7 天，持久化到 `data/sessions.json`（已 gitignore）——重启/更新服务器后登录态保留。
 - npm 包 `files` 发布 `server.js client.js lib/ mcp.json .agents/skills/`（SKILL.md 随包发布，npx 安装也能用 `get_guide`）；Node ≥18；依赖仅 `ws`、`@modelcontextprotocol/sdk`、`zod`。
 - 状态气泡的 connected 以收到服务端 `welcome` 为准（而非 WS onopen），token 错误被拒时不会短暂误绿；气泡用 Shadow DOM + CSSOM 内联样式实现，页面 CSS 无法侵入，禁内联 style 的严格 CSP 下也能显示。
 - 双击气泡的操作记录：服务端对本页只有 eval 一个指令通道（click/type/get_text 等都生成 JS 走 eval），收到即记录、`eval-result` 回包按 reqId 回填 ok/耗时；eval 消息可带 `note`（AI 经工具 note 参数提供、mcp.mjs 预设漏填时回退 label），说明文字在对话框里作为加粗主行、代码降为次要小字。存 sessionStorage（key `__web_bridge_op_log__`，上限：最近 5 次加载 × 每次 100 条 × 单条代码截断 2000 字符）；脚本初始化 push 新分组后**立即落盘**，否则无操作的加载刷新后不会留下分组。双击用 pointerdown 手动判定（350ms 内两次按下），不依赖 click 兼容事件；对话框与气泡同套 Shadow DOM + CSSOM 隔离。

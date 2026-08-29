@@ -408,6 +408,43 @@ async function main() {
     await rm(dataFile5, { force: true });
   }
 
+  // 登录态跨重启：sessions.json 持久化，服务器更新/重启后 cookie 依然有效
+  {
+    console.log("\n— 登录态跨重启持久化 —");
+    const port6 = await freePort();
+    const dataFile6 = path.join(os.tmpdir(), `wb-groups-test-${port6}.json`);
+    const spawnServer = () => spawn(process.execPath, [SERVER, "--transport", "http", "--admin", "admin-pw", "--data", dataFile6, "--port", String(port6)], { stdio: ["pipe", "pipe", "pipe"] });
+    const child6 = spawnServer();
+    child6.stderr.on("data", (d) => process.env.WB_DEBUG && console.error("[server6]", d.toString().trim()));
+    try {
+      await waitForHttp(`http://127.0.0.1:${port6}/`);
+      const loginRes = await fetch(`http://127.0.0.1:${port6}/admin/api/login`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: "admin-pw" }),
+      });
+      const cookie6 = (loginRes.headers.getSetCookie()[0] || "").split(";")[0];
+      check("登录获得会话 cookie", loginRes.status === 200 && cookie6.startsWith("wb_session="));
+
+      // 模拟服务器更新：杀掉进程再以同一 data 目录重启
+      child6.kill("SIGKILL");
+      await sleep(300);
+      const child6b = spawnServer();
+      child6b.stderr.on("data", (d) => process.env.WB_DEBUG && console.error("[server6b]", d.toString().trim()));
+      try {
+        await waitForHttp(`http://127.0.0.1:${port6}/`);
+        const after = await fetch(`http://127.0.0.1:${port6}/admin/api/session`, { headers: { Cookie: cookie6 } }).then((r) => r.json());
+        check("服务器重启后原 cookie 仍为已登录态", after?.loggedIn === true, JSON.stringify(after));
+        const stillAuthed = await fetch(`http://127.0.0.1:${port6}/admin/api/groups`, { headers: { Cookie: cookie6 } });
+        check("重启后管理 API 用原 cookie 可访问", stillAuthed.status === 200);
+      } finally {
+        child6b.kill("SIGKILL");
+      }
+    } finally {
+      child6.kill("SIGKILL");
+      await rm(dataFile6, { force: true });
+      await rm(path.join(path.dirname(dataFile6), "sessions.json"), { force: true }).catch(() => {});
+    }
+  }
+
   // stdio + --admin 组合应拒绝启动
   {
     const bad = spawn(process.execPath, [SERVER, "--admin", "x", "--port", String(await freePort())], { stdio: ["pipe", "pipe", "pipe"] });

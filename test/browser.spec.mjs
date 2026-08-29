@@ -410,7 +410,19 @@ test.describe.serial("web-bridge-mcp 真实浏览器链路", () => {
     await expect(page.locator("#pages-table")).toContainText(`${gname}页面`);
     await expect(page.locator("#evals-table")).toContainText("eval_js");
 
-    // 7. 清理本次创建的分组（复用浏览器里的登录会话）
+    // 7. 路由保持：进入详情后刷新页面，仍停在 #/group/<id> 详情视图（hash 路由 + 会话持久化）
+    await expect(page.locator("#detail")).toBeVisible();
+    const detailHash = new URL(page.url()).hash;
+    expect(detailHash).toMatch(/^#\/group\//);
+    await page.reload();
+    await expect(page.locator("#detail")).toBeVisible();
+    expect(new URL(page.url()).hash).toBe(detailHash);
+    // 返回列表 → hash 回到 #/groups
+    await page.click("#back-btn");
+    await expect(page.locator("#groups-section")).toBeVisible();
+    expect(new URL(page.url()).hash).toBe("#/groups");
+
+    // 8. 清理本次创建的分组（复用浏览器里的登录会话）
     const gid = await row.locator(".detail-btn").getAttribute("data-id");
     await page.evaluate((id) => fetch(`/admin/api/groups/${id}`, { method: "DELETE" }), gid);
   });

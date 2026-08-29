@@ -306,6 +306,26 @@
     d.background = BUBBLE_COLORS.disconnected;
     d.border = "2px solid rgba(255,255,255,.9)";
     d.boxShadow = "0 1px 4px rgba(0,0,0,.4)";
+    var NS = "http://www.w3.org/2000/svg";
+    var icon = document.createElementNS(NS, "svg"); // 白色脉冲折线图标（activity），寓意实时桥接活动
+    icon.setAttribute("viewBox", "0 0 12 12");
+    var is = icon.style;
+    is.position = "absolute";
+    is.left = "50%"; is.top = "50%";
+    is.width = "10px"; is.height = "10px";
+    is.transform = "translate(-50%, -50%)";
+    is.pointerEvents = "none";
+    var pulse = document.createElementNS(NS, "path");
+    pulse.setAttribute("d", "M1 6 H3.4 L5 2.6 L7 9.4 L8.6 6 H11");
+    pulse.setAttribute("fill", "none");
+    pulse.setAttribute("stroke", "rgba(255,255,255,.95)");
+    pulse.setAttribute("stroke-width", "1.5");
+    pulse.setAttribute("stroke-linecap", "round");
+    pulse.setAttribute("stroke-linejoin", "round");
+    icon.appendChild(pulse);
+    d.position = "relative";
+    d.display = "block";
+    bubbleDot.appendChild(icon);
     root.appendChild(bubbleDot);
     initBubbleDrag();
     restoreBubblePos();
@@ -453,6 +473,33 @@
     if (opDialogHost && opDialogHost.parentNode) opDialogHost.parentNode.removeChild(opDialogHost);
   }
 
+  // 部分页面（fullpage 整页滚动库、地图等）在 window 上捕获 wheel/touchmove 并 preventDefault 劫持滚动，
+  // 弹窗与页面共享事件流，内部滚动会被页面吞掉。这里对可滚区域非被动接管：
+  // 有可滚空间时 preventDefault + stopPropagation 并手动驱动 scrollTop，无空间时放行给页面。
+  function hookWheel(scroller) {
+    scroller.addEventListener("wheel", function (e) {
+      var max = scroller.scrollHeight - scroller.clientHeight;
+      if (max <= 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? scroller.clientHeight : 1);
+      scroller.scrollTop = Math.min(Math.max(scroller.scrollTop + delta, 0), max);
+    }, { passive: false, capture: true });
+    // 触摸滚动走 touchmove 而非 wheel，同样被页面劫持时在此接管
+    var lastTouchY = null;
+    scroller.addEventListener("touchstart", function (e) { lastTouchY = e.touches[0].clientY; }, { passive: true });
+    scroller.addEventListener("touchmove", function (e) {
+      var max = scroller.scrollHeight - scroller.clientHeight;
+      if (max <= 0) { lastTouchY = null; return; }
+      e.preventDefault();
+      e.stopPropagation();
+      if (lastTouchY == null) { lastTouchY = e.touches[0].clientY; return; }
+      var y = e.touches[0].clientY;
+      scroller.scrollTop = Math.min(Math.max(scroller.scrollTop + (lastTouchY - y), 0), max);
+      lastTouchY = y;
+    }, { passive: false, capture: true });
+  }
+
   function buildOpDialog() {
     opDialogHost = document.createElement("div");
     css(opDialogHost, {
@@ -483,6 +530,16 @@
     css(opDialogBody, { padding: "4px 16px 16px", overflowY: "auto", fontSize: "13px", color: "#111" });
     panel.appendChild(bar); panel.appendChild(opDialogBody);
     root.appendChild(panel);
+    hookWheel(opDialogBody);
+    // 滚轮/触摸落在标题栏、遮罩上时目标不在 body 内，原生滚动无处可去；转发给 body
+    panel.addEventListener("wheel", function (e) {
+      if (e.composedPath().indexOf(opDialogBody) !== -1) return; // body 自己的 hookWheel 已处理
+      var max = opDialogBody.scrollHeight - opDialogBody.clientHeight;
+      if (max <= 0) return;
+      e.preventDefault();
+      var delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? opDialogBody.clientHeight : 1);
+      opDialogBody.scrollTop = Math.min(Math.max(opDialogBody.scrollTop + delta, 0), max);
+    }, { passive: false, capture: true });
     opDialogHost.addEventListener("click", function (e) { if (e.target === opDialogHost) closeOpDialog(); }); // 点遮罩空白处关闭
   }
 
@@ -545,6 +602,7 @@
       fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: "11px", lineHeight: "1.5",
       color: "#6b7280", whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: "100px", overflowY: "auto",
     });
+    hookWheel(pre); // 单条代码超长时 pre 自身也可滚，同样接管 wheel
     item.appendChild(line);
     if (noteEl) item.appendChild(noteEl);
     item.appendChild(pre);

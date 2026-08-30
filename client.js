@@ -408,7 +408,7 @@
 
   function setStatus(state) {
     bubbleState = state;
-    if (bubbleHost) bubbleHost.title = "web-bridge-mcp · " + BUBBLE_LABELS[state] + "（双击查看操作记录）";
+    if (bubbleHost) bubbleHost.title = "web-bridge-mcp · " + BUBBLE_LABELS[state] + "（单击查看操作记录）";
     if (bubbleDot) bubbleDot.style.background = BUBBLE_COLORS[state];
     if (bubbleAnim) { bubbleAnim.cancel(); bubbleAnim = null; }
     if (state === "connecting" && bubbleDot && bubbleDot.animate) {
@@ -424,8 +424,9 @@
     } else if (!bubbleHost.isConnected && document.body) {
       document.body.appendChild(bubbleHost); // SPA 重写 body 后把气泡挂回（append 幂等，监听不重复）
     }
-    if (opDialogOpen && opDialogHost && !opDialogHost.isConnected && document.body) {
-      document.body.appendChild(opDialogHost); // 对话框开着时被清掉也一并挂回
+    if (opDialogOpen && opPanelHost && !opPanelHost.isConnected && document.body) {
+      placeOpPanel();
+      document.body.appendChild(opPanelHost); // 面板开着时被清掉也一并挂回
     }
   }
 
@@ -478,15 +479,8 @@
   }
 
   function initBubbleDrag() {
-    var dragging = false, moved = false, startX = 0, startY = 0, origX = 0, origY = 0, lastDownTs = 0;
+    var dragging = false, moved = false, startX = 0, startY = 0, origX = 0, origY = 0;
     bubbleHost.addEventListener("pointerdown", function (e) {
-      var now = Date.now();
-      if (now - lastDownTs < 350) { // 手动判定双击（不依赖 click 兼容事件），打开操作记录
-        lastDownTs = 0;
-        openOpDialog();
-        return;
-      }
-      lastDownTs = now;
       dragging = true; moved = false;
       startX = e.clientX; startY = e.clientY;
       var r = bubbleHost.getBoundingClientRect();
@@ -506,12 +500,13 @@
       if (!dragging) return;
       dragging = false;
       bubbleHost.style.cursor = "grab";
-      if (moved) { // 拖拽过后重置双击计时，避免"拖完快速点一下"误判为双击
-        lastDownTs = 0;
+      if (moved) {
         try {
           var r = bubbleHost.getBoundingClientRect();
           sessionStorage.setItem(BUBBLE_POS_KEY, Math.round(r.left) + "," + Math.round(r.top));
         } catch (e) { /* ignore */ }
+      } else {
+        toggleOpPanel(); // 未发生位移即单击：原位展开/收起操作记录
       }
     }
     bubbleHost.addEventListener("pointerup", endDrag);
@@ -537,7 +532,7 @@
     } catch (e) { /* ignore */ }
   }
 
-  // ---------- MCP 操作记录（双击气泡查看；sessionStorage 持久化，按页面加载分组隔开） ----------
+  // ---------- MCP 操作记录（单击气泡在旁展开面板查看；sessionStorage 持久化，按页面加载分组隔开） ----------
   // 服务端对本页的指令只有 eval 一个通道（click/type/get_text 等在 wire 层都是生成 JS 走 eval），
   // 因此记录 eval 即等于记录 MCP 做过的全部操作。
 
@@ -587,38 +582,80 @@
     if (opDialogOpen) renderOpDialog();
   }
 
-  // ---------- 操作记录对话框（独立 Shadow DOM 宿主，样式全走 CSSOM，与气泡同套隔离方案） ----------
+  // ---------- 操作记录面板（单击气泡在圆圈旁原位展开；独立 Shadow DOM 宿主，样式全走 CSSOM） ----------
+  // 展开方向随气泡所在视口象限自适应：气泡在右上角则向左下展开，拖到左上角则向右下展开，以此类推。
 
-  var opDialogHost = null, opDialogOpen = false, opDialogBody = null;
+  var opPanelHost = null, opDialogOpen = false, opDialogBody = null;
 
   function css(el, styles) {
     for (var k in styles) el.style[k] = styles[k];
     return el;
   }
 
-  function openOpDialog() {
-    if (opDialogOpen) { // 已开着但被 SPA 清掉 body 时重新挂回
-      if (opDialogHost && !opDialogHost.isConnected && document.body) document.body.appendChild(opDialogHost);
-      return;
-    }
-    opDialogOpen = true;
-    if (!opDialogHost) buildOpDialog();
-    document.body.appendChild(opDialogHost);
-    document.addEventListener("keydown", opDialogEsc);
-    renderOpDialog();
+  function bubbleQuadrant() { // 气泡中心偏视口哪一侧，面板就往反方向展开
+    var r = bubbleHost.getBoundingClientRect();
+    return {
+      left: r.left + r.width / 2 < window.innerWidth / 2,
+      top: r.top + r.height / 2 < window.innerHeight / 2,
+    };
   }
 
-  function opDialogEsc(e) { if (e.key === "Escape") closeOpDialog(); }
+  function placeOpPanel() {
+    if (!opPanelHost || !bubbleHost) return;
+    var r = bubbleHost.getBoundingClientRect();
+    var q = bubbleQuadrant();
+    var s = opPanelHost.style;
+    s.left = "auto"; s.right = "auto"; s.top = "auto"; s.bottom = "auto";
+    // 水平：气泡靠右时面板右缘对齐气泡，向左展开；靠左则左缘对齐，向右展开
+    if (q.left) s.left = Math.round(r.left) + "px";
+    else s.right = Math.round(window.innerWidth - r.right) + "px";
+    // 垂直：气泡在上半屏时面板顶在气泡下方，向下展开；下半屏则挂在气泡上方
+    if (q.top) s.top = Math.round(r.bottom + 8) + "px";
+    else s.bottom = Math.round(window.innerHeight - r.top + 8) + "px";
+    // transform-origin 取靠近气泡的角，展开动画从该角长出来
+    s.transformOrigin = (q.top ? "top" : "bottom") + " " + (q.left ? "left" : "right");
+  }
 
-  function closeOpDialog() {
+  function toggleOpPanel() {
+    if (opDialogOpen) closeOpPanel();
+    else openOpPanel();
+  }
+
+  function openOpPanel() {
+    if (opDialogOpen) return;
+    opDialogOpen = true;
+    if (!opPanelHost) buildOpPanel();
+    placeOpPanel();
+    document.body.appendChild(opPanelHost);
+    renderOpDialog();
+    if (opPanelHost.animate) { // 从靠近气泡的角缩放 + 淡入展开
+      opPanelHost.animate(
+        [{ opacity: 0, transform: "scale(.85)" }, { opacity: 1, transform: "scale(1)" }],
+        { duration: 160, easing: "ease-out" }
+      );
+    }
+    document.addEventListener("keydown", opPanelEsc);
+    document.addEventListener("pointerdown", opPanelOutside, true);
+  }
+
+  function opPanelEsc(e) { if (e.key === "Escape") closeOpPanel(); }
+
+  function opPanelOutside(e) { // 点面板和气泡以外的区域收起
+    var path = typeof e.composedPath === "function" ? e.composedPath() : [];
+    if (path.indexOf(opPanelHost) !== -1 || path.indexOf(bubbleHost) !== -1) return;
+    closeOpPanel();
+  }
+
+  function closeOpPanel() {
     if (!opDialogOpen) return;
     opDialogOpen = false;
-    document.removeEventListener("keydown", opDialogEsc);
-    if (opDialogHost && opDialogHost.parentNode) opDialogHost.parentNode.removeChild(opDialogHost);
+    document.removeEventListener("keydown", opPanelEsc);
+    document.removeEventListener("pointerdown", opPanelOutside, true);
+    if (opPanelHost && opPanelHost.parentNode) opPanelHost.parentNode.removeChild(opPanelHost);
   }
 
   // 部分页面（fullpage 整页滚动库、地图等）在 window 上捕获 wheel/touchmove 并 preventDefault 劫持滚动，
-  // 弹窗与页面共享事件流，内部滚动会被页面吞掉。这里对可滚区域非被动接管：
+  // 面板与页面共享事件流，内部滚动会被页面吞掉。这里对可滚区域非被动接管：
   // 有可滚空间时 preventDefault + stopPropagation 并手动驱动 scrollTop，无空间时放行给页面。
   function hookWheel(scroller) {
     scroller.addEventListener("wheel", function (e) {
@@ -644,22 +681,17 @@
     }, { passive: false, capture: true });
   }
 
-  function buildOpDialog() {
-    opDialogHost = document.createElement("div");
-    css(opDialogHost, {
-      position: "fixed", top: "0", left: "0", right: "0", bottom: "0",
+  function buildOpPanel() {
+    opPanelHost = document.createElement("div");
+    css(opPanelHost, {
+      position: "fixed",
       zIndex: "2147483647",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      background: "rgba(0,0,0,.45)",
+      background: "#fff", borderRadius: "10px", boxShadow: "0 8px 32px rgba(0,0,0,.3)",
+      width: "440px", maxWidth: "calc(100vw - 24px)", maxHeight: "60vh",
+      display: "flex", flexDirection: "column", overflow: "hidden",
       fontFamily: "system-ui, -apple-system, sans-serif",
     });
-    var root = opDialogHost.attachShadow ? opDialogHost.attachShadow({ mode: "open" }) : opDialogHost;
-    var panel = document.createElement("div");
-    css(panel, {
-      background: "#fff", borderRadius: "10px", boxShadow: "0 8px 32px rgba(0,0,0,.3)",
-      width: "560px", maxWidth: "calc(100vw - 32px)", maxHeight: "70vh",
-      display: "flex", flexDirection: "column", overflow: "hidden",
-    });
+    var root = opPanelHost.attachShadow ? opPanelHost.attachShadow({ mode: "open" }) : opPanelHost;
     var bar = document.createElement("div");
     css(bar, { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid #e5e7eb" });
     var title = document.createElement("strong");
@@ -668,23 +700,12 @@
     var closeBtn = document.createElement("button");
     closeBtn.textContent = "✕";
     css(closeBtn, { border: "none", background: "none", fontSize: "16px", cursor: "pointer", color: "#666", padding: "2px 6px", lineHeight: "1" });
-    closeBtn.addEventListener("click", closeOpDialog);
+    closeBtn.addEventListener("click", closeOpPanel);
     bar.appendChild(title); bar.appendChild(closeBtn);
     opDialogBody = document.createElement("div");
     css(opDialogBody, { padding: "4px 16px 16px", overflowY: "auto", fontSize: "13px", color: "#111" });
-    panel.appendChild(bar); panel.appendChild(opDialogBody);
-    root.appendChild(panel);
+    root.appendChild(bar); root.appendChild(opDialogBody);
     hookWheel(opDialogBody);
-    // 滚轮/触摸落在标题栏、遮罩上时目标不在 body 内，原生滚动无处可去；转发给 body
-    panel.addEventListener("wheel", function (e) {
-      if (e.composedPath().indexOf(opDialogBody) !== -1) return; // body 自己的 hookWheel 已处理
-      var max = opDialogBody.scrollHeight - opDialogBody.clientHeight;
-      if (max <= 0) return;
-      e.preventDefault();
-      var delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? opDialogBody.clientHeight : 1);
-      opDialogBody.scrollTop = Math.min(Math.max(opDialogBody.scrollTop + delta, 0), max);
-    }, { passive: false, capture: true });
-    opDialogHost.addEventListener("click", function (e) { if (e.target === opDialogHost) closeOpDialog(); }); // 点遮罩空白处关闭
   }
 
   function fmtTime(ts) {

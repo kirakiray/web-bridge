@@ -172,7 +172,7 @@ Groups are fully isolated: an editor connected to group A cannot see or touch gr
 | `focus` | `selector`, optional `pageId` / `note` | Focus an element (focus + focusin) |
 | `scroll_to` | `selector`, optional `pageId` / `note` | Scroll an element into view; returns position and visibility |
 | `get_dom_snapshot` | `selector`, optional `depth` / `maxNodes` / `pageId` / `note` | "Virtual screenshot" of an element subtree: one line per visible node with geometry + key computed styles (color / font / border / shadow / z-index) + text; pierces shadow DOM; no permission needed |
-| `get_screenshot` | optional `selector` / `timeoutMs` / `pageId` / `note` | Real screenshot returned as a PNG image (getDisplayMedia screen capture); **the first call pops a native browser prompt — the user must pick "current tab" and grant once**, after which it stays silent for the page's lifetime; `selector` crops to the element |
+| `get_screenshot` | optional `selector` / `maxSide` (max side in px, default 1600, 0 = no scaling) / `quality` (JPEG 0-1, default 0.75) / `timeoutMs` / `pageId` / `note` | Real screenshot returned as a JPEG image (getDisplayMedia capture, compressed browser-side: max side 1600px / quality 0.75 by default, tunable via `maxSide` / `quality`; `maxSide: 0` keeps original pixels); **the first call pops a native browser prompt — the user must pick "current tab" and grant once**, after which it stays silent for the page's lifetime; `selector` crops to the element |
 
 `selector` in click / type / get_text / wait_for / hover / focus / scroll_to / get_dom_snapshot / get_screenshot is a **deep selector**: when the light DOM has no match it automatically pierces open shadow roots — use it directly on Web Components pages (ofa.js / senti-ui etc.).
 

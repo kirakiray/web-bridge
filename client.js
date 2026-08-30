@@ -208,9 +208,9 @@
     try {
       var value = await compile(msg.code)();
       if (value && typeof value === "object" && value.__wbShot) {
-        // 截图专用通道：base64 PNG 不走 preview()（会被 50k 截断），单独字段原样回传
+        // 截图专用通道：base64 图不走 preview()（会被 50k 截断），单独字段原样回传
         res = { type: "eval-result", reqId: msg.reqId, ok: true, durationMs: Date.now() - started,
-          value: "[真实截图] " + value.__wbShot.w + "x" + value.__wbShot.h + "（PNG base64 已附带）", shot: value.__wbShot };
+          value: "[真实截图] " + value.__wbShot.w + "x" + value.__wbShot.h + "（" + (value.__wbShot.mime || "image/png") + " base64 已附带）", shot: value.__wbShot };
       } else {
         res = { type: "eval-result", reqId: msg.reqId, ok: true, value: preview(value, 0, []), durationMs: Date.now() - started };
       }
@@ -266,9 +266,12 @@
   };
 
   // 真实截图：getDisplayMedia 授权一次（用户在浏览器原生弹框里选"当前标签页"），stream 保持存活供后续复用；
-  // 传 el 则按其视口矩形裁剪。返回 {__wbShot} 标记对象，handleEval 识别后走截图专用通道回传。
+  // 传 el 则按其视口矩形裁剪。opts.maxSide 限制最大边长（0 = 不缩放，保留原始像素），
+  // opts.quality 为 JPEG 质量（0-1）。返回 {__wbShot} 标记对象，handleEval 识别后走截图专用通道回传。
   var __wbShotStream = null;
-  window.__wbCapture = async function (el) {
+  window.__wbCapture = async function (el, opts) {
+    opts = opts || {};
+    var MAX_SIDE = opts.maxSide === undefined ? 1600 : opts.maxSide;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
       throw new Error("当前浏览器不支持屏幕捕获（getDisplayMedia），无法真实截图；请改用 get_dom_snapshot 获取样式快照");
     }
@@ -311,12 +314,17 @@
         var kx = srcW / window.innerWidth, ky = srcH / window.innerHeight;
         sx = r.x * kx; sy = r.y * ky; sw = r.width * kx; sh = r.height * ky;
       }
+      // 压缩后再上传：限制最大边长 + JPEG 有损编码。
+      // 多模态 API 对超清截图并不会可靠地自行压缩，Retina 全尺寸 PNG 单张可达数 MB，
+      // 白白消耗传输与上下文；网页截图用 JPEG 0.75 对 AI 视觉识别足够。
+      var scale = MAX_SIDE > 0 ? Math.min(1, MAX_SIDE / Math.max(sw, sh)) : 1;
       var canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(sw));
-      canvas.height = Math.max(1, Math.round(sh));
-      canvas.getContext("2d").drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-      var base64 = canvas.toDataURL("image/png").split(",")[1];
-      return { __wbShot: { base64: base64, w: canvas.width, h: canvas.height } };
+      canvas.width = Math.max(1, Math.round(sw * scale));
+      canvas.height = Math.max(1, Math.round(sh * scale));
+      var ctx = canvas.getContext("2d");
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      var base64 = canvas.toDataURL("image/jpeg", opts.quality === undefined ? 0.75 : opts.quality).split(",")[1];
+      return { __wbShot: { base64: base64, w: canvas.width, h: canvas.height, mime: "image/jpeg" } };
     } finally {
       video.remove();
     }

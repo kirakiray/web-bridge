@@ -325,9 +325,9 @@ test.describe.serial("web-bridge-mcp 真实浏览器链路", () => {
     expect(rstub.isError, rstub.text).toBeFalsy();
     const shot = await callTool("get_screenshot", { timeoutMs: 10000 });
     expect(shot.isError, shot.text).toBeFalsy();
-    // MCP image content：base64 PNG + 说明文本
+    // MCP image content：base64 JPEG（浏览器端压缩：最大边长 1600 + 质量 0.75）+ 说明文本
     expect(shot.image).toBeTruthy();
-    expect(shot.image.mimeType).toBe("image/png");
+    expect(shot.image.mimeType).toBe("image/jpeg");
     expect(shot.image.data.length).toBeGreaterThan(100);
     expect(shot.text).toContain("截图");
     // 第二次调用复用已授权的 stream，无需再弹框
@@ -336,6 +336,14 @@ test.describe.serial("web-bridge-mcp 真实浏览器链路", () => {
     // 元素裁剪路径
     const shot3 = await callTool("get_screenshot", { selector: "#card", timeoutMs: 10000 });
     expect(shot3.isError, shot3.text).toBeFalsy();
+    // maxSide 缩放：限制 200px 后输出边长不超过 200
+    const shot4 = await callTool("get_screenshot", { maxSide: 200, timeoutMs: 10000 });
+    expect(shot4.isError, shot4.text).toBeFalsy();
+    const m4 = shot4.text.match(/截图 (\d+)x(\d+)/);
+    expect(Math.max(Number(m4[1]), Number(m4[2]))).toBeLessThanOrEqual(200);
+    // maxSide: 0 不缩放 + 自定义质量
+    const shot5 = await callTool("get_screenshot", { maxSide: 0, quality: 0.9, timeoutMs: 10000 });
+    expect(shot5.isError, shot5.text).toBeFalsy();
   });
 
   test("多页 pageId 选择与断开清理", async ({ browser }) => {

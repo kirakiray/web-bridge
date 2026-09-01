@@ -1,6 +1,6 @@
 {
   "name": "web-bridge-mcp",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "MCP Server: AI editors call tools over stdio/HTTP to eval JS, read the console, and simulate input on any static web page that includes client.js",
   "type": "module",
   "main": "server.js",

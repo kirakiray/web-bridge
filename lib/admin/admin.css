@@ -136,6 +136,7 @@ thead th {
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--surface-2); }
 .ops-col { width: 150px; }
+th.nowrap, td.nowrap { white-space: nowrap; flex-shrink: 0; }
 td .btn { padding: 5px 10px; font-size: 12.5px; }
 .pill {
   display: inline-block; min-width: 26px; text-align: center;
@@ -163,10 +164,18 @@ pre.console { min-height: 64px; max-height: 320px; overflow-y: auto; white-space
 
 /* ---------- AI 调用记录 ---------- */
 .tool-tag {
+  display: inline-block; max-width: 160px; overflow: hidden;
+  text-overflow: ellipsis; vertical-align: bottom;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 12px; background: var(--accent-weak); color: var(--accent);
   border-radius: 6px; padding: 1px 7px; white-space: nowrap;
 }
+.tool-col { width: 160px; }
+.page-tag {
+  display: inline-block; max-width: 180px; overflow: hidden;
+  text-overflow: ellipsis; vertical-align: bottom; white-space: nowrap;
+}
+.page-col { max-width: 200px; }
 .state { font-weight: 650; }
 .state.ok { color: var(--ok); }
 .state.fail { color: var(--danger); }

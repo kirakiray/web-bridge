@@ -171,7 +171,7 @@ npx web-bridge-mcp --transport http --port 3210 --admin <管理密码>
 | `focus` | `selector`，可选 `pageId` / `note` | 聚焦元素（focus + focusin） |
 | `scroll_to` | `selector`，可选 `pageId` / `note` | 滚动到元素，返回位置与可见性 |
 | `get_dom_snapshot` | `selector`，可选 `depth` / `maxNodes` / `pageId` / `note` | 对元素子树生成「虚拟截图」：每节点一行几何 + 关键样式（颜色/字号/边框/阴影/z-index 等）+ 文本，穿 shadow DOM，免授权 |
-| `get_screenshot` | 可选 `selector` / `timeoutMs` / `pageId` / `note` | 真实截图返回 PNG 图片（getDisplayMedia 屏幕捕获）；**首次调用用户浏览器会弹授权框，需选择"当前标签页"授权一次**，之后页面存续期内免打扰；传 `selector` 按元素裁剪 |
+| `get_screenshot` | 可选 `selector` / `maxSide`（最大边长 px，默认 1600，0 = 不缩放）/ `quality`（JPEG 质量 0-1，默认 0.75）/ `timeoutMs` / `pageId` / `note` | 真实截图返回 JPEG 图片（getDisplayMedia 屏幕捕获，浏览器端压缩：默认最大边长 1600px、质量 0.75，可用 `maxSide` / `quality` 调整，`maxSide: 0` 不缩放留原始像素）；**首次调用用户浏览器会弹授权框，需选择"当前标签页"授权一次**，之后页面存续期内免打扰；传 `selector` 按元素裁剪 |
 
 click / type / get_text / wait_for / hover / focus / scroll_to / get_dom_snapshot / get_screenshot 的 `selector` 均为**深度选择器**：light DOM 查不到时自动穿入已打开的 shadowRoot，Web Components 页面（ofa.js / senti-ui 等）直接用即可。
 
